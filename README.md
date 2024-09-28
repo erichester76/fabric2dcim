@@ -3,22 +3,21 @@
 
 ## Fabrics:
 
-### BigSwitch Converged Fabric / Arista Converged Cloud Fabric (In progress)
-### Cisco Nexus ACI  (In progress)
+#### BigSwitch Converged Fabric / Arista Converged Cloud Fabric (In progress)
+#### Cisco Nexus ACI  (In progress)
 
 ## DCIM/DDI:
 
-### Netbox 4 (maybe older, havent tested)
-### Nautobot (probably, need to test API is still the same)
+#### ### Netbox 4 (maybe older, havent tested)
+#### Nautobot (probably, need to test API is still the same)
 
+## Usage:
 ```bash
 cp .env.example to .env
 [ ! -f .env ] || export $(grep -v '^#' .env | xargs)
 ./fabric2dcim.py
 ```
-
-or command line:
-
+#### or command line:
 ```bash
 usage: fabric2dcim.py [-h] [--fabric-type FABRIC_TYPE] [--fabric-url FABRIC_URL] [--username USERNAME] [--password PASSWORD] [--netbox-url NETBOX_URL]
                       [--netbox-token NETBOX_TOKEN]
