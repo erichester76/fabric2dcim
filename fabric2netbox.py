@@ -3,9 +3,9 @@
 import os
 import argparse
 import pprint
-from bigswitch_fabric import BigSwitchFabric
-from cisco_aci_fabric import CiscoACIFabric
-from netbox_manager import NetBoxManager
+from fabrics.bigswitch_fabric import BigSwitchFabric
+from fabrics.cisco_aci_fabric import CiscoACIFabric
+from dcim.netbox_manager import NetBoxManager
 
 
 def main():
