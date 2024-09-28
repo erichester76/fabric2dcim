@@ -41,7 +41,7 @@ def main():
     else:
         raise ValueError(f'Failed to connect to netbox API at {netbox_url}')
 
-    # Initialize the appropriate fabric based on the --fabric-type argument
+    # Initialize the appropriate fabric based on the fabric-type argument
     if fabric_type.lower() == 'bigswitch':
         fabric = BigSwitchFabric(host=fabric_url, username=fabric_user, password=fabric_pass)
     elif fabric_type.lower() == 'cisco-aci':
