@@ -1,6 +1,6 @@
 import pybsn
 import re
-from network_fabric_base import NetworkFabric
+from fabrics.network_fabric_base import NetworkFabric
 
 DEFAULT_SITE='University of San Diego'
 

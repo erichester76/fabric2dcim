@@ -1,6 +1,6 @@
 
 import requests
-from network_fabric_base import NetworkFabric
+from fabrics.network_fabric_base import NetworkFabric
 
 # Cisco ACI Subclass
 class CiscoACIFabric(NetworkFabric):
