@@ -58,10 +58,11 @@ def main():
         netbox_manager.create_device(switch)
     
     # Sync interfaces to NetBox
-    interfaces = fabric.get_interface_inventory()
-    if interfaces:
-        for interface in interfaces:
-            netbox_manager.create_interface(interface)
+    switches = fabric.get_interface_inventory()
+    if switches:
+        for switch in switches:
+           for interface in switch['interfaces']:
+              netbox_manager.create_interface(interface)
 
     # Sync LAGs to NetBox
     lags = fabric.get_lag_inventory()

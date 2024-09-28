@@ -23,7 +23,7 @@ class BigSwitchFabric(NetworkFabric):
         )
         print(f"Connected to Big Switch API at {self.host}")
 
-    def get_switch_inventory(self):
+    def get_device_inventory(self):
         """Retrieve switches from Big Switch via the /fabric/switch endpoint."""
         try:
             switches = self.client.get("controller/applications/bcf/info/fabric/switch")
@@ -63,6 +63,7 @@ class BigSwitchFabric(NetworkFabric):
                     'platform': interfaces[0].get('implementation'),
                     'interfaces': [
                         {
+                            'device': {'name': switch_name},
                             'name': interfaces[0].get('interface')[iface].get('name'),
                             'mac': interfaces[0].get('interface')[iface].get('hardware-address'),
                             'state': interfaces[0].get('interface')[iface].get('state'),
@@ -79,7 +80,12 @@ class BigSwitchFabric(NetworkFabric):
     def get_lag_inventory(self):
         """Retrieve LAG inventory from Big Switch."""
         pass
-
+    
+    def get_vlan_inventory(self):
+        """Retrieve connection inventory from Big Switch."""
+        pass
+    
     def get_connection_inventory(self):
         """Retrieve connection inventory from Big Switch."""
         pass
+    
