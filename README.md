@@ -1,31 +1,32 @@
-# **Fabrics2DCIM** 
+# **Fabric2DCIM** 
 ### Imports Devices, Interfaces, LAGS, VLANS, IP Addresses, and Connections to other devices to DCIM
 
 ## Fabrics:
 
 #### BigSwitch Converged Fabric / Arista Converged Cloud Fabric (In progress)
-#### Cisco Nexus ACI  (In progress)
+#### Cisco Nexus ACI (In progress)
 
-## DCIM/DDI:
+## DCIM:
 
-#### ### Netbox 4 (maybe older, havent tested)
+#### Netbox 4 (maybe older, havent tested)
 #### Nautobot (probably, need to test API is still the same)
 
+## Installation:
+```
+pip install pynetbox pybsn re requests
+git clone https://github.com/erichester76/fabric2dcim.git
+```
 ## Usage:
-```bash
-cp .env.example to .env
+```
+cp .env.example to .env (adjust variables to your setup)
 [ ! -f .env ] || export $(grep -v '^#' .env | xargs)
 ./fabric2dcim.py
 ```
 #### or command line:
-```bash
+```
 usage: fabric2dcim.py [-h] [--fabric-type FABRIC_TYPE] [--fabric-url FABRIC_URL] [--username USERNAME] [--password PASSWORD] [--netbox-url NETBOX_URL]
                       [--netbox-token NETBOX_TOKEN]
 
-Sync network fabric information to NetBox
-
-optional arguments:
-  -h, --help            show this help message and exit
   --fabric-type FABRIC_TYPE
                         Fabric type (bigswitch or cisco-aci) (FABRIC_TYPE environment variable)
   --fabric-url FABRIC_URL

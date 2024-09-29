@@ -1,6 +1,10 @@
 import pynetbox
 import re
 import pprint
+import os
+import json
+
+DEBUG = os.getenv('DEBUG') or 0
 
 class NetBoxManager:
     
@@ -21,10 +25,12 @@ class NetBoxManager:
         """
         # Cisco interface name to speed mapping (when speed is not explicitly provided)
         cisco_interface_speeds = {
-            'Gi': '1000',    # GigabitEthernet (1G)
-            'Te': '10000',   # TenGigabitEthernet (10G)
-            'Fo': '40000',   # FortyGigabitEthernet (40G)
-            'Hu': '100000',  # HundredGigabitEthernet (100G)
+            'Gi': '1g',    # GigabitEthernet (1G)
+            'Two': '2.5g', #TwoPointFiveGigabitEthernet (2.5G)
+            'Te': '10g',   # TenGigabitEthernet (10G)
+            'Twe': '20g',   # TenGigabitEthernet (20G)
+            'Fo': '40g',   # FortyGigabitEthernet (40G)
+            'Hu': '100g',  # HundredGigabitEthernet (100G)
         }
 
         # Determine speed from Cisco-style interface names if speed is not provided
@@ -35,14 +41,13 @@ class NetBoxManager:
 
         # Mapping based on speed and type (fiber or copper)
         speed_mapping = {
-            '100': {'fiber': '100base-fx', 'copper': '100base-tx'},
-            '1000': {'fiber': '1000base-x-gbic', 'copper': '1000base-t'},
-            '2500': {'fiber': '2.5gbase-x-sfp', 'copper': '2.5gbase-t'},
-            '5000': {'fiber': '5gbase-x-sfp', 'copper': '5gbase-t'},
-            '10000': {'fiber': '10gbase-x-sfpp', 'copper': '10gbase-t'},
-            '25000': {'fiber': '25gbase-x-sfp28', 'copper': '25gbase-t'},
-            '40000': {'fiber': '40gbase-x-qsfpp', 'copper': '40gbase-cr4'},
-            '100000': {'fiber': '100gbase-x-cfp2', 'copper': '100gbase-cr4'}
+            '1g': {'fiber': '1000base-x-gbic', 'copper': '1000base-t'},
+            '25g': {'fiber': '2.5gbase-x-sfp', 'copper': '2.5gbase-t'},
+            '5g': {'fiber': '5gbase-x-sfp', 'copper': '5gbase-t'},
+            '10g': {'fiber': '10gbase-x-sfpp', 'copper': '10gbase-t'},
+            '25g': {'fiber': '25gbase-x-sfp28', 'copper': '25gbase-x-sfp28'},
+            '40g': {'fiber': '40gbase-x-qsfpp', 'copper': '40gbase-x-qsfpp'},
+            '100g': {'fiber': '100gbase-x-cfp2', 'copper': '100gbase-x-cfp2'}
         }
 
         # Default to 'fiber' if type is not specified
@@ -57,44 +62,88 @@ class NetBoxManager:
         # Fallback if no match found
         return 'other'
 
-
     def create_or_update(self, object_type, lookup_field, lookup_value, data, api='dcim'):
         """
-        Generic method to create or update objects in NetBox.
+        Generic method to create, update, or modify objects in NetBox.
 
         Args:
-            object_type (str): The type of object to check or create (e.g., 'devices', 'interfaces', 'cables').
-            lookup_field (str): The field to check for existence (e.g., 'name', 'address').
+            object_type (str): The type of object to check or create (e.g., 'interfaces', 'devices').
+            lookup_field (str): The field to check for existence (e.g., 'name').
             lookup_value (str): The value of the field to search for.
             data (dict): The data to create or update the object with.
             api (str): The API section to use ('dcim', 'ipam').
 
         Returns:
-            The existing or newly created object.
+            The existing, modified, or newly created object.
         """
         api_section = getattr(self.nb, api)
-         # Check if the object_type is 'interfaces', we need to filter by both name and device
-        if object_type == 'interfaces':
-        # Filter using both interface name and device name
-            existing_object = getattr(api_section, object_type).filter(name=lookup_value, device=data['device']['name'])
-        
-        else:
-            # For other object types, we can just use get
-            existing_object = getattr(api_section, object_type).get(**{lookup_field: lookup_value})
-        
-        if existing_object:
-            print(f"{object_type.capitalize()} with {lookup_field} '{lookup_value}' already exists.")
-            return existing_object
-        else:
-            print(f"Creating new {object_type.capitalize()} with {lookup_field} '{lookup_value}'.")
-            return getattr(api_section, object_type).create(data)
 
+        # Check if the object exists by filtering based on the lookup field (e.g., name + device for interfaces)
+        existing_object = None
+        if object_type == 'interfaces':
+            # For interfaces, we need to filter by both name and device to ensure uniqueness
+            existing_object = getattr(api_section, object_type).filter(name=lookup_value, device=data['device']['name'])
+            # Iterate over the RecordSet to get the first object if it exists
+            for obj in existing_object:
+                existing_object = obj
+                break  # We only need the first matching object
+        else:
+            # For other objects, we can just use 'get'
+            existing_object = getattr(api_section, object_type).get(**{lookup_field: lookup_value})
+
+        # If the object exists, compare the fields and modify if necessary
+        if existing_object:
+            changes_required = False
+            update_data = {}
+
+            # Compare each field in the existing object with the new data
+            for key, value in data.items():
+                # Skip non-comparable fields like 'id'
+                if key in ['id']:
+                    continue
+
+                # Use deep comparison for nested structures like dictionaries
+                existing_value = getattr(existing_object, key, None)
+
+                # If it's a dictionary, compare it using json.dumps to ensure deep comparison
+                if isinstance(value, dict) and isinstance(existing_value, dict):
+                    if json.dumps(existing_value, sort_keys=True) != json.dumps(value, sort_keys=True):
+                        update_data[key] = value
+                        changes_required = True
+                else:
+                    # Normalize strings by stripping and converting to lowercase
+                    existing_value_str = str(existing_value).strip().lower() if isinstance(existing_value, str) else existing_value
+                    value_str = str(value).strip().lower() if isinstance(value, str) else value
+
+                    if existing_value_str != value_str:
+                        update_data[key] = value
+                        changes_required = True
+
+            # If there are changes, modify the object in NetBox
+            if changes_required:
+                #print(f"Updating {object_type.capitalize()} '{lookup_value}' with changes: {update_data}")
+                existing_object.update(update_data)  # Apply the changes in NetBox
+            else:
+                print(f"{object_type.capitalize()} '{lookup_value}' is already up-to-date.") if DEBUG == 1 else None
+
+            return existing_object
+
+        # If the object doesn't exist, create it
+        print(f"Creating new {object_type.capitalize()} with {lookup_field} '{lookup_value}'.")
+        return getattr(api_section, object_type).create(data)
+
+
+    def create_virtual_chassis(self, vc_data):
+        """Create or update a Virtual Chassis in NetBox with dependency checks."""
+
+        return self.create_or_update('virtual_chassis', 'name', vc_data['name'], vc_data)
+        
     def create_device(self, device_data):
         """Create or update a device in NetBox with dependency and IP checks."""
         # Check or create dependencies first: device_role, device_type, platform, and site
-        if 'device_role' in device_data:
-            role_name = device_data['device_role']['name']
-            device_data['device_role'] = self.create_or_update(
+        if 'role' in device_data:
+            role_name = device_data['role']['name']
+            device_data['role'] = self.create_or_update(
                 'device_roles', 'name', role_name, {'name': role_name, 'slug': role_name.lower().replace(" ", "-")}
             ).id
 
@@ -105,7 +154,7 @@ class NetBoxManager:
                 'manufacturers', 'name', manufacturer, {'name': manufacturer, 'slug': manufacturer.lower().replace(" ", "-")}
             )
             device_data['device_type'] = self.create_or_update(
-                'device_types', 'model', type_model, {'model': type_model, 'manufacturer': manufacturer_obj.id}
+                'device_types', 'model', type_model, {'model': type_model, 'slug': manufacturer.lower().replace(" ", "-")+'-'+type_model.lower().replace(" ", "-"), 'manufacturer': manufacturer_obj.id}
             ).id
 
         if 'platform' in device_data:
@@ -143,6 +192,8 @@ class NetBoxManager:
         media_type = interface_data['speed_type'][0] if interface_data['speed_type'] else None
         speed = interface_data['speed_type'][1] if interface_data['speed_type'] else None        
         interface_data['type'] = self.interface_netbox_type(interface_data.get('name'), speed, media_type)
+        interface_data['mac_address']=interface_data['mac_address'].upper()
+        del interface_data['speed_type']
 
         """Create or update an interface in NetBox with dependency and IP checks."""
         # Now create the interface
@@ -188,8 +239,8 @@ class NetBoxManager:
         )
 
         if existing_cable:
-            print(f"Connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}' already exists. Skipping creation.")
+            print(f"Connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}' already exists. Skipping creation.") if DEBUG == 1 else None
             return existing_cable
         else:
-            print(f"Creating new connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}'.")
+            print(f"Creating new connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}'.") if DEBUG == 1 else None
             return self.nb.dcim.cables.create(connection_data)

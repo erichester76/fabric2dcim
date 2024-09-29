@@ -1,6 +1,7 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import os
+import re
 import argparse
 import pprint
 from fabrics.bigswitch_fabric import BigSwitchFabric
@@ -13,19 +14,25 @@ def main():
     parser = argparse.ArgumentParser(description="Sync network fabric information to NetBox")
     parser.add_argument('--fabric-type', type=str, help='Fabric type (bigswitch or cisco-aci) (FABRIC_TYPE environment variable)')
     parser.add_argument('--fabric-url', type=str, help='Fabric controller URL (FABRIC_URL environment variable)')
+    parser.add_argument('--fabric-name', type=str, help='Fabric controller name (FABRIC_URL environment variable)')
     parser.add_argument('--username', type=str, help='Fabric username (FABRIC_USERNAME environment variable)')
     parser.add_argument('--password', type=str, help='Fabric password (FABRIC_PASSWORD environment variable)')
     parser.add_argument('--netbox-url', type=str, help='NetBox URL (NETBOX_URL environment variable)')
     parser.add_argument('--netbox-token', type=str, help='NetBox API token (NETBOX_TOKEN environment variable)')
+    parser.add_argument('--netbox-site', type=str, help='NetBox site name to use (NETBOX_SITE environment variable)')
+
     args = parser.parse_args()
     
     # Load Environment variables if not on command line
     netbox_url = args.netbox_url or os.getenv('NETBOX_URL')
     netbox_token = args.netbox_token or os.getenv('NETBOX_TOKEN')
+    netbox_site = args.netbox_site or os.getenv('NETBOX_SITE')
     fabric_type = args.fabric_type or os.getenv('FABRIC_TYPE')
     fabric_url = args.fabric_url or os.getenv('FABRIC_URL')
     fabric_user = args.username or os.getenv('FABRIC_USERNAME')
     fabric_pass = args.password or os.getenv('FABRIC_PASSWORD')
+    fabric_name = args.username or os.getenv('FABRIC_NAME')
+
     DEBUG=os.getenv('DEBUG') or 0
 
     if not netbox_url or not netbox_token:
@@ -51,13 +58,54 @@ def main():
 
     # Connect to the fabric
     fabric.connect()
+    
+    # Create Virtual Chassis to represent Fabric
+    controller = {}  
+    vc={}
+    vc['name'] = fabric_name or (fabric_type.upper()+'-'+re.sub(r'http[s]*\:\/\/([0-9A-z]*)\.*.*',r'\1',fabric_url.lower())).upper()
+    print(f"Creating Virtual Chassis and Controller {vc['name']} for Fabric")
+
+    # Create Virtual Device to represent Fabric Controller
+    if 'bigswitch' in fabric_type.lower(): 
+        manufacturer = 'Arista' 
+    elif 'cisco-aci' in fabric_type.lower():
+        manufacturer = 'Cisco'
+
+    controller['name'] = fabric_name or (fabric_type.upper()+'-'+re.sub(r'http[s]*\:\/\/([0-9A-z]*)\.*.*',r'\1',fabric_url.lower())).upper()+" Controller"
+    controller['device_type'] = {'model': 'Fabric Controller'}
+    controller['manufacturer']= {'name': manufacturer}
+    controller['role']={'name': 'Network Fabric Controller'}
+    controller['status']='active'
+    controller['site']={'name': netbox_site}
+        
+    # Create virtual chassis and get id to use for controllers virtual chassis
+    vc_id = netbox_manager.create_virtual_chassis(vc).id
+    vc_position=0
+    controller['virtual_chassis']=vc_id
+    controller['vc_position']=vc_position
+    controller['vc_priority']=0
+
+    # Create controller and take id to set master on virtual chassis
+    controller = netbox_manager.create_device(controller)
+    vc['master']=controller.id
+    vc = netbox_manager.create_virtual_chassis(vc)
 
     # Sync switches to NetBox
+    print(f'Collecting Devices from Fabric')
     switches = fabric.get_device_inventory()
     for switch in switches:
+        switch['virtual_chassis']=vc_id
+        vc_position=vc_position+1
+        switch['vc_position']=vc_position
+        switch['vc_priority']=0
+        switch['site']={'name': netbox_site}
         netbox_manager.create_device(switch)
-    
+        
+        # Create Virtual Device to represent Fabric Controller
+        print(f'Adding {switch.get("name")} to Fabric Virtual Chassis')
+            
     # Sync interfaces to NetBox
+    print(f'Collecting Interfaces from Fabric')
     switches = fabric.get_interface_inventory()
     if switches:
         for switch in switches:
@@ -65,12 +113,14 @@ def main():
               netbox_manager.create_interface(interface)
 
     # Sync LAGs to NetBox
+    print(f'Collecting LAGs from Fabric')
     lags = fabric.get_lag_inventory()
     if lags:
         for lag in lags:
             netbox_manager.create_lag(lag)
 
     # Sync connections (cables) to NetBox
+    print(f'Collecting Connections from Fabric')
     connections = fabric.get_connection_inventory()
     if connections:
         for connection in connections:
