@@ -5,11 +5,15 @@ from fabrics.network_fabric_base import NetworkFabric
 # Cisco ACI Subclass
 class CiscoACIFabric(NetworkFabric):
 
-    def __init__(self, apic_url, username, password):
-        self.apic_url = apic_url
-        self.username = username
-        self.password = password
-        self.session = None
+    def __init__(self, config, ip_manager):
+        self.config = config
+        self.ip_manager = ip_manager
+        self.apic_url = self.config.get('fabric_url')
+        self.username = self.config.get('fabric_user')
+        self.password = self.config.get('fabric_pass')
+        self.default_site = self.config.get('netbox_site')
+        self.DEBUG = self.config.get('debug')
+        self.client = None
 
     def connect(self):
         """Implement connection logic specific to Cisco ACI."""

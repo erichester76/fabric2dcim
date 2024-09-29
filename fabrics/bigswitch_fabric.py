@@ -1,16 +1,18 @@
 import pybsn
 import re
 from fabrics.network_fabric_base import NetworkFabric
-
-DEFAULT_SITE='University of San Diego'
-
+    
 # Big Switch Subclass
 class BigSwitchFabric(NetworkFabric):
 
-    def __init__(self, host, username, password):
-        self.host = host
-        self.username = username
-        self.password = password
+    def __init__(self, config, ip_manager):
+        self.config = config
+        self.ip_manager = ip_manager
+        self.host = self.config.get('fabric_url')
+        self.username = self.config.get('fabric_user')
+        self.password = self.config.get('fabric_pass')
+        self.default_site = self.config.get('netbox_site')
+        self.DEBUG = self.config.get('debug') 
         self.client = None
 
     def connect(self):
@@ -40,7 +42,7 @@ class BigSwitchFabric(NetworkFabric):
                 'status': 'active' if switch.get('connected') else 'offline',
                 'primary_ip6': re.sub(r'\%3',r'',switch.get('inet-address', {}).get('ip'))+"/64",
                 'primary_ip4': switch.get('inet-address', {}).get('ip')+"/32",
-                'site': {'name': DEFAULT_SITE}
+                'site': {'name': self.default_site}
                 }
                 switches_data.append(switch_info)
             
@@ -88,10 +90,6 @@ class BigSwitchFabric(NetworkFabric):
         except Exception as e:
             print(f"Error fetching switch inventory: {e}")
             return []
-
-    def get_lag_inventory(self):
-        """Retrieve LAG inventory from Big Switch."""
-        pass
     
     def get_vlan_inventory(self):
         """Retrieve connection inventory from Big Switch."""

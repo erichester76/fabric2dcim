@@ -7,52 +7,37 @@ import pprint
 from fabrics.bigswitch_fabric import BigSwitchFabric
 from fabrics.cisco_aci_fabric import CiscoACIFabric
 from dcim.netbox_manager import NetBoxManager
+from config.config_manager import ConfigManager
+from dcim.ip_manager import IPManager
 
 
 def main():
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Sync network fabric information to NetBox")
-    parser.add_argument('--fabric-type', type=str, help='Fabric type (bigswitch or cisco-aci) (FABRIC_TYPE environment variable)')
-    parser.add_argument('--fabric-url', type=str, help='Fabric controller URL (FABRIC_URL environment variable)')
-    parser.add_argument('--fabric-name', type=str, help='Fabric controller name (FABRIC_URL environment variable)')
-    parser.add_argument('--username', type=str, help='Fabric username (FABRIC_USERNAME environment variable)')
-    parser.add_argument('--password', type=str, help='Fabric password (FABRIC_PASSWORD environment variable)')
-    parser.add_argument('--netbox-url', type=str, help='NetBox URL (NETBOX_URL environment variable)')
-    parser.add_argument('--netbox-token', type=str, help='NetBox API token (NETBOX_TOKEN environment variable)')
-    parser.add_argument('--netbox-site', type=str, help='NetBox site name to use (NETBOX_SITE environment variable)')
-
-    args = parser.parse_args()
     
-    # Load Environment variables if not on command line
-    netbox_url = args.netbox_url or os.getenv('NETBOX_URL')
-    netbox_token = args.netbox_token or os.getenv('NETBOX_TOKEN')
-    netbox_site = args.netbox_site or os.getenv('NETBOX_SITE')
-    fabric_type = args.fabric_type or os.getenv('FABRIC_TYPE')
-    fabric_url = args.fabric_url or os.getenv('FABRIC_URL')
-    fabric_user = args.username or os.getenv('FABRIC_USERNAME')
-    fabric_pass = args.password or os.getenv('FABRIC_PASSWORD')
-    fabric_name = args.username or os.getenv('FABRIC_NAME')
+    config = ConfigManager()
+    config.load()  # Load configuration from both environment variables and arguments
 
-    DEBUG=os.getenv('DEBUG') or 0
+    ip_manager = IPManager()     # Initialize IPManager and pass it to other classes
+    
 
-    if not netbox_url or not netbox_token:
+    if not config.get('netbox_url') or not config.get('netbox_token'):
         raise ValueError("NetBox URL and token must be provided either as arguments or environment variables (--help for more)")
 
-    if not fabric_type or not fabric_url or not fabric_user or not fabric_pass:
+    if not config.get('fabric_type') or not config.get('fabric_url') or not config.get('fabric_user') or not config.get('fabric_pass'):
         raise ValueError("Must specify fabric information (type, url, user, pass) as arguments or environment variables (--help for more)")
 
-
+    DEBUG = config.get('debug')
+    
     # Initialize the NetBox Manager
-    netbox_manager = NetBoxManager(netbox_url=netbox_url, netbox_token=netbox_token)
-    if netbox_manager: print(f'Connected to netbox API at {netbox_url}')
+    netbox_manager = NetBoxManager(config, ip_manager)
+    if netbox_manager: print(f"Connected to netbox API at {config.get('netbox_url')}")
     else:
-        raise ValueError(f'Failed to connect to netbox API at {netbox_url}')
+        raise ValueError(f"Failed to connect to netbox API at {config.get('netbox_url')}")
 
     # Initialize the appropriate fabric based on the fabric-type argument
-    if fabric_type.lower() == 'bigswitch':
-        fabric = BigSwitchFabric(host=fabric_url, username=fabric_user, password=fabric_pass)
-    elif fabric_type.lower() == 'cisco-aci':
-        fabric = CiscoACIFabric(apic_url=fabric_url, username=fabric_user, password=fabric_pass)
+    if config.get('fabric_type').lower() == 'bigswitch':
+        fabric = BigSwitchFabric(config, ip_manager)
+    elif config.get('fabric_type').lower() == 'cisco-aci':
+        fabric = CiscoACIFabric(config, ip_manager)
     else:
         raise ValueError("Unsupported fabric type. Supported values are 'bigswitch' and 'cisco-aci'.")
 
@@ -62,21 +47,21 @@ def main():
     # Create Virtual Chassis to represent Fabric
     controller = {}  
     vc={}
-    vc['name'] = fabric_name or (fabric_type.upper()+'-'+re.sub(r'http[s]*\:\/\/([0-9A-z]*)\.*.*',r'\1',fabric_url.lower())).upper()
+    vc['name'] = config.get('fabric_name') or (config.get('fabric_type').upper()+'-'+re.sub(r'http[s]*\:\/\/([0-9A-z]*)\.*.*',r'\1',config.get('fabric_url').lower())).upper()
     print(f"Creating/Updating Virtual Chassis and Controller {vc['name']} for Fabric")
 
     # Create Virtual Device to represent Fabric Controller
-    if 'bigswitch' in fabric_type.lower(): 
+    if 'bigswitch' in config.get('fabric_type').lower(): 
         manufacturer = 'Arista' 
-    elif 'cisco-aci' in fabric_type.lower():
+    elif 'cisco-aci' in config.get('fabric_type').lower():
         manufacturer = 'Cisco'
 
-    controller['name'] = fabric_name or (fabric_type.upper()+'-'+re.sub(r'http[s]*\:\/\/([0-9A-z]*)\.*.*',r'\1',fabric_url.lower())).upper()+" Controller"
+    controller['name'] = vc['name']+" Controller"
     controller['device_type'] = {'model': 'Fabric Controller'}
     controller['manufacturer']= {'name': manufacturer}
     controller['role']={'name': 'Network Fabric Controller'}
     controller['status']='active'
-    controller['site']={'name': netbox_site}
+    controller['site']={'name': config.get('netbox_site')}
         
     # Create virtual chassis and get id to use for controllers virtual chassis
     vc_id = netbox_manager.create_virtual_chassis(vc).id
@@ -98,7 +83,7 @@ def main():
         vc_position=vc_position+1
         switch['vc_position']=vc_position
         switch['vc_priority']=0
-        switch['site']={'name': netbox_site}
+        switch['site']={'name': config.get('netbox_site')}
         netbox_manager.create_device(switch)
         
         # Create Virtual Device to represent Fabric Controller

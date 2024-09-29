@@ -1,18 +1,21 @@
 import pynetbox
-import re
-import pprint
-import os
 import json
 
 from dcim.ip_manager import IPManager 
 
-DEBUG = os.getenv('DEBUG') or 0
 
 class NetBoxManager:
     
-    def __init__(self, netbox_url, netbox_token):
-        self.nb = pynetbox.api(url=netbox_url, token=netbox_token)
-        self.ip_manager = IPManager()
+    def __init__(self, config, ip_manager):
+        self.config = config
+        self.nb = pynetbox.api(url=self.config.get('netbox_url'), token=self.config.get('netbox_token'))
+        self.ip_manager = ip_manager
+        self.host = self.config.get('fabric_url')
+        self.username = self.config.get('fabric_user')
+        self.password = self.config.get('fabric_pass')
+        self.default_site = self.config.get('netbox_site') or 0
+        self.DEBUG = self.config.get('debug') or 0
+        self.client = None
 
         
     def interface_netbox_type(self, interface_name, speed=None, interface_type=None):
@@ -128,7 +131,7 @@ class NetBoxManager:
                 #print(f"Updating {object_type.capitalize()} '{lookup_value}' with changes: {update_data}")
                 existing_object.update(update_data)  # Apply the changes in NetBox
             else:
-                print(f"{object_type.capitalize()} '{lookup_value}' is already up-to-date.") if DEBUG == 1 else None
+                print(f"{object_type.capitalize()} '{lookup_value}' is already up-to-date.") if self.DEBUG == 1 else None
 
             return existing_object
 
@@ -251,8 +254,8 @@ class NetBoxManager:
         )
 
         if existing_cable:
-            print(f"Connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}' already exists. Skipping creation.") if DEBUG == 1 else None
+            print(f"Connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}' already exists. Skipping creation.") if self.DEBUG == 1 else None
             return existing_cable
         else:
-            print(f"Creating new connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}'.") if DEBUG == 1 else None
+            print(f"Creating new connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}'.") if self.DEBUG == 1 else None
             return self.nb.dcim.cables.create(connection_data)
