@@ -4,12 +4,16 @@ import pprint
 import os
 import json
 
+from dcim.ip_manager import IPManager 
+
 DEBUG = os.getenv('DEBUG') or 0
 
 class NetBoxManager:
     
     def __init__(self, netbox_url, netbox_token):
         self.nb = pynetbox.api(url=netbox_url, token=netbox_token)
+        self.ip_manager = IPManager()
+
         
     def interface_netbox_type(self, interface_name, speed=None, interface_type=None):
         """
@@ -140,6 +144,19 @@ class NetBoxManager:
         
     def create_device(self, device_data):
         """Create or update a device in NetBox with dependency and IP checks."""
+        
+        # Store the IPs to assign after interfaces are created
+        device_name = device_data['name']
+        self.ip_manager.store_ip_for_device = {
+            'name': device_data['name'],
+            'primary_ip4': device_data.get('primary_ip4'),
+            'primary_ip6': device_data.get('primary_ip6')
+        }
+
+        # Remove IPs from device data (they can't be set yet)
+        device_data.pop('primary_ip4', None)
+        device_data.pop('primary_ip6', None)
+        
         # Check or create dependencies first: device_role, device_type, platform, and site
         if 'role' in device_data:
             role_name = device_data['role']['name']
@@ -169,19 +186,6 @@ class NetBoxManager:
                 'sites', 'name', site_name, {'name': site_name, 'slug': site_name.lower().replace(" ", "-")}
             ).id
 
-        # Check or create primary_ip4 and primary_ip6
-        if 'primary_ip4' in device_data:
-            primary_ip4 = device_data['primary_ip4']
-            device_data['primary_ip4'] = self.create_or_update(
-                'ip_addresses', 'address', primary_ip4, {'address': primary_ip4}, api='ipam'
-            ).id
-
-        if 'primary_ip6' in device_data:
-            primary_ip6 = device_data['primary_ip6']
-            device_data['primary_ip6'] = self.create_or_update(
-                'ip_addresses', 'address', primary_ip6, {'address': primary_ip6}, api='ipam'
-            ).id
-
         # Now create the device itself
         return self.create_or_update('devices', 'name', device_data['name'], device_data)
 
@@ -198,7 +202,15 @@ class NetBoxManager:
         """Create or update an interface in NetBox with dependency and IP checks."""
         # Now create the interface
         interface = self.create_or_update('interfaces', 'name', interface_data.get('name'), interface_data)
+        # Use the IPManager to assign the stored primary IP to the interface
+        self.ip_manager.assign_ip_to_interface(interface_data, self.nb)
         return interface
+    
+    def update_device_with_primary_ips(self):
+        """
+        Update devices with the primary IPs after they have been assigned to interfaces.
+        """
+        self.ip_manager.update_device_with_primary_ips(self.nb)
 
     def create_lag(self, lag_data):
         """Create or update a LAG in NetBox with dependency checks."""

@@ -38,8 +38,8 @@ class BigSwitchFabric(NetworkFabric):
                 'platform': re.sub(r'^([A-Za-z\ ]+)(\ )([A-Z0-9\:\-\(\)\.\,\ ]+).*$',r'\1',switch.get('software-description')),
                 'serial_number': switch.get('serial-number-description'),
                 'status': 'active' if switch.get('connected') else 'offline',
-                #'primary_ip6': re.sub(r'\%3',r'',switch.get('inet-address', {}).get('ip'))+"/64",
-                #'primary_ip4': switch.get('inet-address', {}).get('ip'))+"/32"
+                'primary_ip6': re.sub(r'\%3',r'',switch.get('inet-address', {}).get('ip'))+"/64",
+                'primary_ip4': switch.get('inet-address', {}).get('ip')+"/32",
                 'site': {'name': DEFAULT_SITE}
                 }
                 switches_data.append(switch_info)
@@ -70,6 +70,17 @@ class BigSwitchFabric(NetworkFabric):
                             'enabled': True if interfaces[0].get('interface')[iface].get('state') == 'up' else False,
                             'speed_type': interfaces[0].get('interface')[iface].get('current-features')
                         } for iface in range(len(interfaces[0].get('interface')))
+                    ],
+                    'lags': [
+                        {
+                            'name': interfaces[0].get('fabric-lag')[lag].get('name'),
+                            'type': interfaces[0].get('fabric-lag')[lag].get('lag-type'),
+                            'members': [
+                                {
+                                'interface': interfaces[0].get('fabric-lag')[lag].get('member')[mem].get('src-interface')
+                                } for mem in range(len(interfaces[0].get('fabric-lag')[lag].get('member')))
+                            ],
+                    } for lag in range(len(interfaces[0].get('fabric-lag')))
                     ]
                 }
                 switches_data.append(switch_info)
