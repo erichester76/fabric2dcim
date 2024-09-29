@@ -63,7 +63,7 @@ def main():
     controller = {}  
     vc={}
     vc['name'] = fabric_name or (fabric_type.upper()+'-'+re.sub(r'http[s]*\:\/\/([0-9A-z]*)\.*.*',r'\1',fabric_url.lower())).upper()
-    print(f"Creating Virtual Chassis and Controller {vc['name']} for Fabric")
+    print(f"Creating/Updating Virtual Chassis and Controller {vc['name']} for Fabric")
 
     # Create Virtual Device to represent Fabric Controller
     if 'bigswitch' in fabric_type.lower(): 
@@ -102,7 +102,7 @@ def main():
         netbox_manager.create_device(switch)
         
         # Create Virtual Device to represent Fabric Controller
-        print(f'Adding {switch.get("name")} to Fabric Virtual Chassis')
+        print(f'Adding/Updating {switch.get("name")} to Fabric Virtual Chassis') if DEBUG==1 else None
             
     # Sync interfaces to NetBox
     print(f'Collecting Interfaces from Fabric')
@@ -112,12 +112,15 @@ def main():
            for interface in switch['interfaces']:
               netbox_manager.create_interface(interface)
 
+    print(f'Setting Primary IPs on Devices') if DEBUG==1 else None
+    netbox_manager.update_device_with_primary_ips()
+    
     # Sync LAGs to NetBox
     print(f'Collecting LAGs from Fabric')
-    lags = fabric.get_lag_inventory()
-    if lags:
-        for lag in lags:
-            netbox_manager.create_lag(lag)
+    if switches:
+        for switch in switches:
+           for lag in switch['lags']:
+              netbox_manager.create_lag(lag)
 
     # Sync connections (cables) to NetBox
     print(f'Collecting Connections from Fabric')
