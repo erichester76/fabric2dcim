@@ -20,13 +20,8 @@ class NetworkFabric(ABC):
         pass
 
     @abstractmethod
-    def get_vlan_inventory(self):
+    def get_network_inventory(self):
         """Abstract method to retrieve vlan inventory from the fabric."""
-        pass
-    
-    @abstractmethod
-    def get_lag_inventory(self):
-        """Abstract method to retrieve LAG inventory from the fabric."""
         pass
 
     @abstractmethod

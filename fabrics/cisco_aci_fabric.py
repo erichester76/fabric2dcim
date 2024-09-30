@@ -79,7 +79,7 @@ class CiscoACIFabric(NetworkFabric):
             print(f"Error fetching interface inventory from Cisco ACI: {e}")
             return []
 
-    def get_lag_inventory(self):
+    def get_network_inventory(self):
         """Retrieve LAG inventory from Cisco ACI."""
         # Cisco ACI handles Port-Channel, you can implement logic to retrieve port-channel details
         pass

@@ -1,5 +1,6 @@
 import pynetbox
 import json
+import pprint
 
 from dcim.ip_manager import IPManager 
 
@@ -13,8 +14,8 @@ class NetBoxManager:
         self.host = self.config.get('fabric_url')
         self.username = self.config.get('fabric_user')
         self.password = self.config.get('fabric_pass')
-        self.default_site = self.config.get('netbox_site') or 0
-        self.DEBUG = self.config.get('debug') or 0
+        self.default_site = self.config.get('netbox_site')
+        self.DEBUG = self.config.get('debug')
         self.client = None
 
         
@@ -114,29 +115,49 @@ class NetBoxManager:
 
                 # If it's a dictionary, compare it using json.dumps to ensure deep comparison
                 if isinstance(value, dict) and isinstance(existing_value, dict):
-                    if json.dumps(existing_value, sort_keys=True) != json.dumps(value, sort_keys=True):
+                    if json.dumps(existing_value, sort_keys=True).lower() != json.dumps(value, sort_keys=True).lower():
                         update_data[key] = value
                         changes_required = True
                 else:
+                    
+                    if object_type == 'interfaces' and key == 'type':
+                        if str(existing_value) in 'qsfp+ (40ge)': existing_value = '40gbase-x-qsfpp'                    
+                        elif str(existing_value) in 'sfp+ (10ge)': existing_value = '10gbase-x-sfpp'
+                    
+                    #TODO: need to do lookup for ID items when we have name and nb has ID
+                    
                     # Normalize strings by stripping and converting to lowercase
-                    existing_value_str = str(existing_value).strip().lower() if isinstance(existing_value, str) else existing_value
-                    value_str = str(value).strip().lower() if isinstance(value, str) else value
-
-                    if existing_value_str != value_str:
+                    existing_value_str = str(existing_value).strip().lower()
+                    value_str = str(value).strip().lower() 
+                    
+                    #deal with netbox sending just the name vs a dictionary like it should on some keys
+                    if not isinstance(existing_value, dict) and isinstance(value, dict) and (key in ['device'] or key in ['lag']):
+                        value_str = str(value['name']).strip().lower() 
+                    
+                    # deal with the fact that netbox sends back description for interface type vs slug need to map (there is no lookup api call!)
+                    if object_type == 'interfaces' and key == 'type':
+                        if  existing_value_str in 'qsfp+ (40ge)': existing_value_str = '40gbase-x-qsfpp'                    
+                        elif existing_value_str in 'sfp+ (10ge)': existing_value_str = '10gbase-x-sfpp'
+                        
+                    if value_str not in existing_value_str:
+                        #print(f'{key} = nb:{existing_value_str} / us:{value_str}')
                         update_data[key] = value
                         changes_required = True
 
             # If there are changes, modify the object in NetBox
             if changes_required:
-                #print(f"Updating {object_type.capitalize()} '{lookup_value}' with changes: {update_data}")
+                if object_type in "interfaces": print(f"Updating {object_type.capitalize()} {data['device']['name']} {lookup_value}") if self.DEBUG else None
+                else: print(f"Updating {object_type.capitalize()} {lookup_value}") if self.DEBUG else None
+
                 existing_object.update(update_data)  # Apply the changes in NetBox
             else:
-                print(f"{object_type.capitalize()} '{lookup_value}' is already up-to-date.") if self.DEBUG == 1 else None
+                 if object_type in "interfaces": print(f"{object_type.capitalize()} {data['device']['name']} {lookup_value} is already up-to-date.") if self.DEBUG else None
+                 else: print(f"{object_type.capitalize()} {lookup_value} is already up-to-date.") if self.DEBUG else None
 
             return existing_object
 
         # If the object doesn't exist, create it
-        print(f"Creating new {object_type.capitalize()} with {lookup_field} '{lookup_value}'.")
+        print(f"Creating new {object_type.capitalize()} with {lookup_field} {lookup_value}.")
         return getattr(api_section, object_type).create(data)
 
 
@@ -217,22 +238,21 @@ class NetBoxManager:
 
     def create_lag(self, lag_data):
         """Create or update a LAG in NetBox with dependency checks."""
-        # Ensure the device for the LAG exists
-        if 'device' in lag_data:
-            device_name = lag_data['device']['name']
-            lag_data['device'] = self.create_or_update(
-                'devices', 'name', device_name, {'name': device_name}
-            ).id
+        members=lag_data['members']
+        lag_data.pop('members', None)        
+        print(f"Creating/Updating LAG {lag_data['name']}") if self.DEBUG else None
+        
+        lag_data=self.create_or_update('interfaces', 'name', lag_data['name'], lag_data)
 
-        # Ensure member interfaces exist
-        if 'lag_members' in lag_data:
-            for member in lag_data['lag_members']:
-                interface_name = member['name']
-                self.create_or_update('interfaces', 'name', interface_name, {'name': interface_name})
-
-        # Now create the LAG (LAG is an interface with type='lag')
-        return self.create_or_update('interfaces', 'name', lag_data['name'], lag_data)
-
+        for member in members:
+            member_data={}
+            member_data['lag']={'name': lag_data['name'], 'device': { 'name' : lag_data['device']['name'] } }
+            member_data['device']={ 'name' : lag_data['device']['name'] }
+            member_data['name']=member['name']
+            print(f"Adding {member['name']} to {lag_data['name']}") if self.DEBUG else None
+            self.create_or_update('interfaces', 'name', member_data['name'], member_data)
+        
+        
     def create_connection(self, connection_data):
         """Create or update a connection (cable) in NetBox with interface termination checks."""
         lookup_value_a = connection_data['termination_a_id']
@@ -254,8 +274,8 @@ class NetBoxManager:
         )
 
         if existing_cable:
-            print(f"Connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}' already exists. Skipping creation.") if self.DEBUG == 1 else None
+            print(f"Connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}' already exists. Skipping creation.") if self.DEBUG else None
             return existing_cable
         else:
-            print(f"Creating new connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}'.") if self.DEBUG == 1 else None
+            print(f"Creating new connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}'.") if self.DEBUG else None
             return self.nb.dcim.cables.create(connection_data)
