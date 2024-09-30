@@ -101,6 +101,7 @@ def main():
     # Sync LAGs to NetBox
     print(f'Collecting LAGs from Fabric')
     networks = fabric.get_network_inventory()
+    pprint.pp(networks)
     
     # Sync connections (cables) to NetBox
     print(f'Collecting Connections from Fabric')

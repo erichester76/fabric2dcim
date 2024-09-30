@@ -105,7 +105,10 @@ class BigSwitchFabric(NetworkFabric):
             ig_data=[]
             # Loop through the response at the "group" level
             for group in interface_groups:
+                group_data = []
                 group_name = group.get('name')
+                print(f'Found IG: {group_name}')
+
                 if group_name == 'segment': continue # skip the segment entries
 
                 # Initialize an empty list to hold the members for the entire group
@@ -114,50 +117,101 @@ class BigSwitchFabric(NetworkFabric):
                 # Loop through each 'interface' in the group and extract member-info
                 for interface in group.get('interface', []):
                     # Extract member info (single dictionary per interface)
+                    leaf_group=interface.get('leaf-group')
+                    down_reason=interface.get('interface-down-reason')
+                    phy_state = interface.get('phy-state')
+                    op_state = interface.get('op-state')
+                    mode = interface.get('mode')
                     member_info = interface.get('member-info', {})
-                    member_data = {
-                        'device': member_info.get('associated-switch-name') or member_info.get('switch-name'),
-                        'interface': member_info.get('associated-interface-name') or member_info.get('interface-name'),
-                        'endpoint': member_info.get('host-name'),
-                        'endpoint_interface': member_info.get('interface-name'),
-                        'type': member_info.get('type')
-                    }
-                    if member_data.get('interface'): members.append(member_data) #skip the no interface entries
-
+                    member_data={}
+                    if member_info.get('type') == 'host':
+                        member_data['endpoint'] = member_info.get('host-name')
+                        member_data['endpoint_interface'] = member_info.get('interface-name')
+                        if down_reason == 'None':
+                            member_data['device'] = member_info.get('associated-switch-name') 
+                            member_data['interface'] = member_info.get('associated-interface-name')
+                        
+                    if member_info.get('type') == 'switch':
+                        member_data['device'] = member_info.get('switch-name') 
+                        member_data['interface'] = member_info.get('interface-name') if member_info.get('type') == 'switch' else None,
+                
+                        
+                    members.append(member_data) #skip the no interface entries
 
                 # Create a dictionary for the processed group with all members in a single nest
-                if members:
-                    group_data = {
-                      'group_name': group_name,
-                      'members': members  
+                group_data = {
+                    'interface_group_name': group_name,
+                    'switch_group' : leaf_group,
+                    'members': members if members else None,  
+                    'mode': mode,
+                    'admin_state': op_state,
+                    'status': phy_state,                    
                     }
-                    # Append the processed data to the array
+                merged=False
+                # check if entry for group-name & leaf-group already exists, if so merge members together
+                for index, group in enumerate(ig_data):
+                    if group.get('interface_group_name') == group_name and group.get('switch_group') == leaf_group:
+                        print(f'adding members to group {group_name}')
+                        ig_data[index]['members'].append(members)  
+                        merged=True
+                # Append the processed data to the array
+                if not merged: 
                     ig_data.append(group_data)
+                    print(f'Adding group {group_name}')
                     
             print(f"Processing layer2 info..")
             segments = self.client.get("controller/applications/bcf/tenant/segment")
-            # Merge the second API response with processed_interfaces
             for segment in segments:
                 # Extract the group name from 'interface-group-membership-rule' if available
                 if 'interface-group-membership-rule' in segment:
                     for rule in segment['interface-group-membership-rule']:
                         interface_group = rule.get('interface-group')
-
-                        # Find the matching group in 'processed_interfaces'
-                        for group in ig_data:
-                            if group['group_name'] == interface_group:
-                                # Add 'vlan', 'description', and 'segment' to the group
-                                group['vlan'] = rule.get('vlan')
-                                group['description'] = segment.get('description')
-                                group['segment'] = segment.get('id')
+                        print(f'Found IG in segment: {interface_group}')
                 
+                        # Iterate through 'ig_data' with enumerate to track index
+                        for idx, igroup in enumerate(ig_data):
+                             if igroup['interface_group_name'] == interface_group:
+                                print(f'Found existing group {interface_group}')
+                                # Ensure 'segments' is a list in the group
+                                if 'segments' not in igroup:
+                                    igroup['segments'] = []
+
+                                # Append the new segment to the 'segments' list
+                                new_segment = {
+                                    'vlan': rule.get('vlan'),
+                                    'description': rule.get('description'),
+                                    'vni': rule.get('member-vni'),
+                                    'segment': segment.get('name')
+                                }
+                                ig_data[idx]['segments'].append(new_segment)
+                                matched = True
+                                print(f'Adding segment to group {interface_group }')
+
+                                break  # Stop searching once we find a match
+
+                        # If no match is found, create a new entry in 'ig_data' with a 'segments' subgroup
+                        if not matched:
+                            new_group = {
+                                'interface_group_name': interface_group,
+                                'segments': [
+                                    {
+                                        'vlan': rule.get('vlan'),
+                                        'description': rule.get('description'),
+                                        'vni': rule.get('member-vni'),
+                                        'segment': segment.get('name')
+                                    }
+                                ]
+                            }
+                            ig_data.append(new_group)  # Add the new entry to 'ig_data'                  
+                            print(f'Adding segment group {new_group}')
+    
             print(f"Processing layer3 info..")
             
             logical_routers = self.client.get("controller/applications/bcf/tenant/logical-router/segment-interface")
             for ip_info in logical_routers:
                 segment = ip_info.get('segment')
                 
-                # Iterate throughig_data to find the matching segment
+                # Iterate through ig_data to find the matching segment
                 for index, group in enumerate(ig_data):
                     if group.get('segment') == segment:
                         # Initialize fields for IPv4 and IPv6
