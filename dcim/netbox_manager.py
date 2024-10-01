@@ -140,19 +140,18 @@ class NetBoxManager:
                         elif existing_value_str in 'sfp+ (10ge)': existing_value_str = '10gbase-x-sfpp'
                         
                     if value_str not in existing_value_str:
-                        #print(f'{key} = nb:{existing_value_str} / us:{value_str}')
                         update_data[key] = value
                         changes_required = True
 
             # If there are changes, modify the object in NetBox
             if changes_required:
-                if object_type in "interfaces": print(f"Updating {object_type.capitalize()} {data['device']['name']} {lookup_value}") if self.DEBUG else None
-                else: print(f"Updating {object_type.capitalize()} {lookup_value}") if self.DEBUG else None
+                if object_type in "interfaces": print(f"Updating {data['device']['name']} {lookup_value}") if self.DEBUG else None
+                else: print(f"Updating  {lookup_value}") if self.DEBUG else None
 
                 existing_object.update(update_data)  # Apply the changes in NetBox
             else:
-                 if object_type in "interfaces": print(f"{object_type.capitalize()} {data['device']['name']} {lookup_value} is already up-to-date.") if self.DEBUG else None
-                 else: print(f"{object_type.capitalize()} {lookup_value} is already up-to-date.") if self.DEBUG else None
+                 if object_type in "interfaces": print(f"{data['device']['name']} {lookup_value} is already up-to-date.") if self.DEBUG else None
+                 else: print(f"{lookup_value} is already up-to-date.") if self.DEBUG else None
 
             return existing_object
 

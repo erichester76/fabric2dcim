@@ -74,34 +74,34 @@ def main():
     vc = netbox_manager.create_virtual_chassis(vc)
 
     # Sync switches to NetBox
-    # print(f'Collecting Devices from Fabric')
-    # switches = fabric.get_device_inventory()
-    # for switch in switches:
-    #     switch['virtual_chassis']=vc_id
-    #     vc_position=vc_position+1
-    #     switch['vc_position']=vc_position
-    #     switch['vc_priority']=0
-    #     switch['site']={'name': config.get('netbox_site')}
-    #     netbox_manager.create_device(switch)
+    print(f'Collecting Devices from Fabric')
+    switches = fabric.get_device_inventory()
+    for switch in switches:
+        switch['virtual_chassis']=vc_id
+        vc_position=vc_position+1
+        switch['vc_position']=vc_position
+        switch['vc_priority']=0
+        switch['site']={'name': config.get('netbox_site')}
+        netbox_manager.create_device(switch)
         
-    #     # Create Virtual Device to represent Fabric Controller
-    #     print(f'Adding/Updating {switch.get("name")} to Fabric Virtual Chassis') if DEBUG else None
+        # Create Virtual Device to represent Fabric Controller
+        print(f'Adding/Updating {switch.get("name")} to Fabric Virtual Chassis') if DEBUG else None
             
-    # # Sync interfaces to NetBox
-    # print(f'Collecting Interfaces from Fabric')
-    # switches = fabric.get_interface_inventory()
-    # if switches:
-    #     for switch in switches:
-    #        for interface in switch['interfaces']:
-    #           netbox_manager.create_interface(interface)
+    # Sync interfaces to NetBox
+    print(f'Collecting Interfaces from Fabric')
+    switches = fabric.get_interface_inventory()
+    if switches:
+        for switch in switches:
+           for interface in switch['interfaces']:
+              netbox_manager.create_interface(interface)
 
-    # print(f'Setting Primary IPs on Devices') if DEBUG else None
-    # netbox_manager.update_device_with_primary_ips()
+    print(f'Setting Primary IPs on Devices') if DEBUG else None
+    netbox_manager.update_device_with_primary_ips()
     
     # Sync LAGs to NetBox
     print(f'Collecting LAGs from Fabric')
     (networks,segments) = fabric.get_network_inventory()
-    pprint.pp(segments)   
+
     # Sync connections (cables) to NetBox
     #print(f'Collecting Connections from Fabric')
     #connections = fabric.get_connection_inventory()

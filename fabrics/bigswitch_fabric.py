@@ -197,7 +197,6 @@ class BigSwitchFabric(NetworkFabric):
                             'vni': segment.get('member-vni') if segment.get('member-vni') != 'None' else None,
                         }
                             
-            pprint.pp(segment_data)
             print(f"Processing layer3 info..")
             
             logical_routers = self.client.get("controller/applications/bcf/tenant/logical-router/segment-interface")
@@ -228,7 +227,7 @@ class BigSwitchFabric(NetworkFabric):
                         
                     for key,value in segment_data.items():
                         if str(key) == str(segment):
-                            print(f'Saving IP Information to segment {segment} {ip4_address} {ip6_address}') if self.DEBUG==1 else None
+                            print(f'Adding IP information to segment {segment} {ip4_address} {ip6_address}') if self.DEBUG else None
                             segment_data[key]['ip4_network']=ip4_network
                             segment_data[key]['ip6_network']=ip6_network
                             segment_data[key]['ip4_address']=ip4_address
@@ -249,5 +248,7 @@ class BigSwitchFabric(NetworkFabric):
         """Retrieve connection inventory from Big Switch."""
         #get spine/leaf connections
         core_links = self.client.get("controller/applications/bcf/info/fabric/link")
+        #use interface data for rest
+        
         
     
