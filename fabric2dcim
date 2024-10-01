@@ -62,7 +62,7 @@ def main():
     controller['site']={'name': config.get('netbox_site')}
         
     # Create virtual chassis and get id to use for controllers virtual chassis
-    vc_id = netbox_manager.create_virtual_chassis(vc).id
+    vc_id = netbox_manager.create_virtual_chassis(vc).get('id')
     vc_position=0
     controller['virtual_chassis']=vc_id
     controller['vc_position']=vc_position
@@ -70,7 +70,7 @@ def main():
 
     # Create controller and take id to set master on virtual chassis
     controller = netbox_manager.create_device(controller)
-    vc['master']=controller.id
+    vc['master']=controller.get('id')
     vc = netbox_manager.create_virtual_chassis(vc)
 
     # Sync switches to NetBox
@@ -101,7 +101,6 @@ def main():
     # Sync LAGs to NetBox
     print(f'Collecting LAGs from Fabric')
     (networks,segments) = fabric.get_network_inventory()
-
     # Sync connections (cables) to NetBox
     #print(f'Collecting Connections from Fabric')
     #connections = fabric.get_connection_inventory()

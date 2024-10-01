@@ -3,7 +3,7 @@ import json
 import pprint
 
 from dcim.ip_manager import IPManager 
-
+from dcim.netbox_cache import NetBoxCache
 
 class NetBoxManager:
     
@@ -17,7 +17,10 @@ class NetBoxManager:
         self.default_site = self.config.get('netbox_site')
         self.DEBUG = self.config.get('debug')
         self.client = None
-
+        # Initialize the NetBoxCache inside NetBoxManager
+        nb_cacher = NetBoxCache(self.config, self.nb)
+        self.netbox_cache = nb_cacher.cache
+        self.object_mapping = nb_cacher.object_mapping
         
     def interface_netbox_type(self, interface_name, speed=None, interface_type=None):
         """
@@ -70,7 +73,7 @@ class NetBoxManager:
         # Fallback if no match found
         return 'other'
 
-    def create_or_update(self, object_type, lookup_field, lookup_value, data, api='dcim'):
+    def create_or_update(self, object_type, lookup_field, lookup_value, data):
         """
         Generic method to create, update, or modify objects in NetBox.
 
@@ -79,92 +82,61 @@ class NetBoxManager:
             lookup_field (str): The field to check for existence (e.g., 'name').
             lookup_value (str): The value of the field to search for.
             data (dict): The data to create or update the object with.
-            api (str): The API section to use ('dcim', 'ipam').
 
         Returns:
             The existing, modified, or newly created object.
         """
-        api_section = getattr(self.nb, api)
 
-        # Check if the object exists by filtering based on the lookup field (e.g., name + device for interfaces)
-        existing_object = None
+        # Generate the cache lookup key for interfaces and VM interfaces
         if object_type == 'interfaces':
-            # For interfaces, we need to filter by both name and device to ensure uniqueness
-            existing_object = getattr(api_section, object_type).filter(name=lookup_value, device=data['device']['name'])
-            # Iterate over the RecordSet to get the first object if it exists
-            for obj in existing_object:
-                existing_object = obj
-                break  # We only need the first matching object
+            cache_key = f"{data['device']['name']}_{data[lookup_field]}"  # Device Name + Interface Name
+        elif object_type == 'vminterfaces':
+            cache_key = f"{data['virtual_machine']['name']}_{data[lookup_field]}"  # VM Name + Interface Name
         else:
-            # For other objects, we can just use 'get'
-            existing_object = getattr(api_section, object_type).get(**{lookup_field: lookup_value})
+            cache_key = f"{lookup_value}"
 
-        # If the object exists, compare the fields and modify if necessary
-        if existing_object:
-            changes_required = False
-            update_data = {}
+        # Check if the object exists in the cache
+        if cache_key in self.netbox_cache[object_type]:
+            print(f"Using cached {object_type}: {lookup_value}") if self.DEBUG else None
+            existing_object = self.netbox_cache[object_type][cache_key]
 
-            # Compare each field in the existing object with the new data
-            for key, value in data.items():
-                # Skip non-comparable fields like 'id'
-                if key in ['id']:
-                    continue
-
-                # Use deep comparison for nested structures like dictionaries
-                existing_value = getattr(existing_object, key, None)
-
-                # If it's a dictionary, compare it using json.dumps to ensure deep comparison
-                if isinstance(value, dict) and isinstance(existing_value, dict):
-                    if json.dumps(existing_value, sort_keys=True).lower() != json.dumps(value, sort_keys=True).lower():
-                        update_data[key] = value
-                        changes_required = True
-                else:
-                    
-                    if object_type == 'interfaces' and key == 'type':
-                        if str(existing_value) in 'qsfp+ (40ge)': existing_value = '40gbase-x-qsfpp'                    
-                        elif str(existing_value) in 'sfp+ (10ge)': existing_value = '10gbase-x-sfpp'
-                    
-                    #TODO: need to do lookup for ID items when we have name and nb has ID
-                    
-                    # Normalize strings by stripping and converting to lowercase
-                    existing_value_str = str(existing_value).strip().lower()
-                    value_str = str(value).strip().lower() 
-                    
-                    #deal with netbox sending just the name vs a dictionary like it should on some keys
-                    if not isinstance(existing_value, dict) and isinstance(value, dict) and (key in ['device'] or key in ['lag']):
-                        value_str = str(value['name']).strip().lower() 
-                    
-                    # deal with the fact that netbox sends back description for interface type vs slug need to map (there is no lookup api call!)
-                    if object_type == 'interfaces' and key == 'type':
-                        if  existing_value_str in 'qsfp+ (40ge)': existing_value_str = '40gbase-x-qsfpp'                    
-                        elif existing_value_str in 'sfp+ (10ge)': existing_value_str = '10gbase-x-sfpp'
-                        
-                    if value_str not in existing_value_str:
-                        update_data[key] = value
-                        changes_required = True
-
-            # If there are changes, modify the object in NetBox
-            if changes_required:
-                if object_type in "interfaces": print(f"Updating {data['device']['name']} {lookup_value}") if self.DEBUG else None
-                else: print(f"Updating  {lookup_value}") if self.DEBUG else None
-
-                existing_object.update(update_data)  # Apply the changes in NetBox
-            else:
-                 if object_type in "interfaces": print(f"{data['device']['name']} {lookup_value} is already up-to-date.") if self.DEBUG else None
-                 else: print(f"{lookup_value} is already up-to-date.") if self.DEBUG else None
+            # Compare and update if necessary
+            if not self.compare_objects(existing_object, data):
+                print(f"Updating {object_type}: {lookup_value}") if self.DEBUG else None
+                existing_object.update(data)  # Updating object via NetBox API
+                self.netbox_cache[object_type][cache_key] = existing_object  # Update cache with new data
 
             return existing_object
+        else:
+            # If not found in cache, create the object
+            print(f"Creating new {object_type}: {lookup_value}") if self.DEBUG else None
+            new_object = self.create_object(object_type, data)
 
-        # If the object doesn't exist, create it
-        print(f"Creating new {object_type.capitalize()} with {lookup_field} {lookup_value}.")
-        return getattr(api_section, object_type).create(data)
+            # Add the newly created object to the cache
+            self.netbox_cache[object_type][cache_key] = new_object
+            return new_object
+
+    def create_object(self, object_type, data):
+        """Helper method to create a new object in NetBox."""
+        api_section, _ = self.object_mapping[object_type]
+        return api_section.create(data)
+
+    def compare_objects(self, existing_object, new_data):
+        """Compare existing object with new data. Returns True if they match, False otherwise."""
+        for key, value in new_data.items():
+            if getattr(existing_object, key, None) != value:
+                return False
+        return True
+
 
 
     def create_virtual_chassis(self, vc_data):
         """Create or update a Virtual Chassis in NetBox with dependency checks."""
 
-        return self.create_or_update('virtual_chassis', 'name', vc_data['name'], vc_data)
-        
+        obj = self.create_or_update('virtual_chassis', 'name', vc_data['name'], vc_data)
+        pprint.pp(obj)
+        return obj
+
     def create_device(self, device_data):
         """Create or update a device in NetBox with dependency and IP checks."""
         
@@ -185,7 +157,7 @@ class NetBoxManager:
             role_name = device_data['role']['name']
             device_data['role'] = self.create_or_update(
                 'device_roles', 'name', role_name, {'name': role_name, 'slug': role_name.lower().replace(" ", "-")}
-            ).id
+            ).get('id')
 
         if 'device_type' in device_data:
             type_model = device_data['device_type']['model']
@@ -194,20 +166,20 @@ class NetBoxManager:
                 'manufacturers', 'name', manufacturer, {'name': manufacturer, 'slug': manufacturer.lower().replace(" ", "-")}
             )
             device_data['device_type'] = self.create_or_update(
-                'device_types', 'model', type_model, {'model': type_model, 'slug': manufacturer.lower().replace(" ", "-")+'-'+type_model.lower().replace(" ", "-"), 'manufacturer': manufacturer_obj.id}
-            ).id
+                'device_types', 'model', type_model, {'model': type_model, 'slug': manufacturer.lower().replace(" ", "-")+'-'+type_model.lower().replace(" ", "-"), 'manufacturer': manufacturer_obj.get('id')}
+            ).get('id')
 
         if 'platform' in device_data:
             platform_name = device_data['platform']
             device_data['platform'] = self.create_or_update(
                 'platforms', 'name', platform_name, {'name': platform_name, 'slug': platform_name.lower().replace(" ", "-")}
-            ).id
+            ).get('id')
 
         if 'site' in device_data:
             site_name = device_data['site']['name']
             device_data['site'] = self.create_or_update(
                 'sites', 'name', site_name, {'name': site_name, 'slug': site_name.lower().replace(" ", "-")}
-            ).id
+            ).get('id')
 
         # Now create the device itself
         return self.create_or_update('devices', 'name', device_data['name'], device_data)
