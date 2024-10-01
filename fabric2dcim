@@ -54,26 +54,26 @@ def main():
     elif 'cisco-aci' in config.get('fabric_type').lower():
         manufacturer = 'Cisco'
 
-    # controller['name'] = vc['name']+" Controller"
-    # controller['device_type'] = {'model': 'Fabric Controller'}
-    # controller['manufacturer']= {'name': manufacturer}
-    # controller['role']={'name': 'Network Fabric Controller'}
-    # controller['status']='active'
-    # controller['site']={'name': config.get('netbox_site')}
+    controller['name'] = vc['name']+" Controller"
+    controller['device_type'] = {'model': 'Fabric Controller'}
+    controller['manufacturer']= {'name': manufacturer}
+    controller['role']={'name': 'Network Fabric Controller'}
+    controller['status']='active'
+    controller['site']={'name': config.get('netbox_site')}
         
-    # # Create virtual chassis and get id to use for controllers virtual chassis
-    # vc_id = netbox_manager.create_virtual_chassis(vc).id
-    # vc_position=0
-    # controller['virtual_chassis']=vc_id
-    # controller['vc_position']=vc_position
-    # controller['vc_priority']=0
+    # Create virtual chassis and get id to use for controllers virtual chassis
+    vc_id = netbox_manager.create_virtual_chassis(vc).id
+    vc_position=0
+    controller['virtual_chassis']=vc_id
+    controller['vc_position']=vc_position
+    controller['vc_priority']=0
 
-    # # Create controller and take id to set master on virtual chassis
-    # controller = netbox_manager.create_device(controller)
-    # vc['master']=controller.id
-    # vc = netbox_manager.create_virtual_chassis(vc)
+    # Create controller and take id to set master on virtual chassis
+    controller = netbox_manager.create_device(controller)
+    vc['master']=controller.id
+    vc = netbox_manager.create_virtual_chassis(vc)
 
-    # # Sync switches to NetBox
+    # Sync switches to NetBox
     # print(f'Collecting Devices from Fabric')
     # switches = fabric.get_device_inventory()
     # for switch in switches:
@@ -100,15 +100,14 @@ def main():
     
     # Sync LAGs to NetBox
     print(f'Collecting LAGs from Fabric')
-    networks = fabric.get_network_inventory()
-    pprint.pp(networks)
-    
+    (networks,segments) = fabric.get_network_inventory()
+    pprint.pp(segments)   
     # Sync connections (cables) to NetBox
-    print(f'Collecting Connections from Fabric')
-    connections = fabric.get_connection_inventory()
-    if connections:
-        for connection in connections:
-            netbox_manager.create_connection(connection)
+    #print(f'Collecting Connections from Fabric')
+    #connections = fabric.get_connection_inventory()
+    #if connections:
+    #    for connection in connections:
+    #       netbox_manager.create_connection(connection)
 
 if __name__ == "__main__":
     main()

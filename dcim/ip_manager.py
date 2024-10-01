@@ -1,5 +1,3 @@
-
-
 class IPManager:
     def __init__(self):
         # Temporary storage for IPs to be assigned
@@ -20,12 +18,12 @@ class IPManager:
             primary_ips = self.ip_addresses_to_assign[device_name]
 
             if interface_ip == primary_ips.get('primary_ip4'):
-                print(f"Assigning primary_ip4 to interface: {interface_data['name']}")
+                print(f"Assigning ip4 {interface_ip} to interface: {interface_data['name']}")
                 netbox_ip = netbox_instance.ipam.ip_addresses.get(address=interface_ip)
                 netbox_ip.update({'assigned_object_id': interface_data['id']})
 
             if interface_ip == primary_ips.get('primary_ip6'):
-                print(f"Assigning primary_ip6 to interface: {interface_data['name']}")
+                print(f"Assigning ip6 {interface_ip} to interface: {interface_data['name']}")
                 netbox_ip = netbox_instance.ipam.ip_addresses.get(address=interface_ip)
                 netbox_ip.update({'assigned_object_id': interface_data['id']})
 
