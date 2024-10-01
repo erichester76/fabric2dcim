@@ -1,3 +1,4 @@
 netbox-bcf.py
 .env
 scripts
+netbox_cache.json
