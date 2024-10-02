@@ -26,6 +26,7 @@ set +a
 ./fabric2dcim
 ```
 #### or command line:
+```
 usage: fabric2dcim [-h] [--fabric-type FABRIC_TYPE] [--fabric-url FABRIC_URL] [--fabric-name FABRIC_NAME] [--username USERNAME] [--password PASSWORD] [--netbox-url NETBOX_URL] [--netbox-token NETBOX_TOKEN]
                    [--netbox-site NETBOX_SITE] [--cache-filename CACHE_FILENAME] [--cache-timeout CACHE_TIMEOUT] [--debug DEBUG]
 
