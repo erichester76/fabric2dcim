@@ -62,7 +62,7 @@ def main():
     controller['site']={'name': config.get('netbox_site')}
         
     # Create virtual chassis and get id to use for controllers virtual chassis
-    vc_id = netbox_manager.create_virtual_chassis(vc).get('id')
+    vc_id = netbox_manager.create_virtual_chassis(vc)['id']
     vc_position=0
     controller['virtual_chassis']=vc_id
     controller['vc_position']=vc_position
@@ -70,7 +70,7 @@ def main():
 
     # Create controller and take id to set master on virtual chassis
     controller = netbox_manager.create_device(controller)
-    vc['master']=controller.get('id')
+    vc['master']=controller['id']
     vc = netbox_manager.create_virtual_chassis(vc)
 
     # Sync switches to NetBox
@@ -98,11 +98,21 @@ def main():
     print(f'Setting Primary IPs on Devices') if DEBUG else None
     netbox_manager.update_device_with_primary_ips()
     
-    # Sync LAGs to NetBox
-    print(f'Collecting LAGs from Fabric')
+    # Sync Network Topology to NetBox
+    print(f'Collecting Network Topology from Fabric')
     (networks,segments) = fabric.get_network_inventory()
+     
+    # Sync VLANs
+    print(f'Creating/Updating VLANs in Netbox')
+    # Sync Prefixes
+    print(f'Creating/Updating Prefixes in Netbox')
+    # Sync VLAN Layer3 interfaces
+    print(f'Creating/Updating VLAN Layer3 Interfaces in Netbox')
+    # Sync LAGss
+    print(f'Creating/Updating LAGs in Netbox')
+    
     # Sync connections (cables) to NetBox
-    #print(f'Collecting Connections from Fabric')
+    print(f'Collecting Connections from Fabric')
     #connections = fabric.get_connection_inventory()
     #if connections:
     #    for connection in connections:

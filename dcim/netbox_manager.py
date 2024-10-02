@@ -89,30 +89,45 @@ class NetBoxManager:
 
         # Generate the cache lookup key for interfaces and VM interfaces
         if object_type == 'interfaces':
-            cache_key = f"{data['device']['name']}_{data[lookup_field]}"  # Device Name + Interface Name
-        elif object_type == 'vminterfaces':
-            cache_key = f"{data['virtual_machine']['name']}_{data[lookup_field]}"  # VM Name + Interface Name
+            # Check if 'device' in the data is a dictionary (new_data) or an ID (existing_object)
+            if isinstance(data['device'], dict) and 'name' in data['device']:
+                device_name = data['device']['name']
+            else:
+                # Use reverse lookup to convert ID to name
+                device_id = data['device']
+                device_name = self.cache['id_lookup'].get(device_id, {}).get('name', f"UnknownDevice-{device_id}")
+            
+            cache_key = f"{device_name}_{data[lookup_field]}"  # Device Name + Interface Name
+
+        elif object_type == 'virtual_interfaces':
+            # Same logic for VM interfaces
+            if isinstance(data['virtual_machine'], dict) and 'name' in data['virtual_machine']:
+                vm_name = data['virtual_machine']['name']
+            else:
+                vm_id = data['virtual_machine']
+                vm_name = self.cache['id_lookup'].get(vm_id, {}).get('name', f"UnknownVM-{vm_id}")
+            
+            cache_key = f"{vm_name}_{data[lookup_field]}"  # VM Name + Interface Name
         else:
-            cache_key = f"{lookup_value}"
+            # Default cache key for other object types
+            cache_key = f"{data[lookup_field]}"
 
         # Check if the object exists in the cache
         if cache_key in self.netbox_cache[object_type]:
-            print(f"Using cached {object_type}: {lookup_value}") if self.DEBUG else None
+            print(f"Using cached {object_type}: {lookup_value} {cache_key}") if self.DEBUG == 1 else None
             existing_object = self.netbox_cache[object_type][cache_key]
 
             # Compare and update if necessary
-            if not self.compare_objects(existing_object, data):
-                print(f"Updating {object_type}: {lookup_value}") if self.DEBUG else None
-                existing_object.update(data)  # Updating object via NetBox API
+            no_change = not existing_object or self.compare_objects(existing_object, data)
+            if not no_change:  
+                print(f"Updating {object_type}: {lookup_value}") if self.DEBUG == 1 else None
+                existing_object.update(data)  
                 self.netbox_cache[object_type][cache_key] = existing_object  # Update cache with new data
-
             return existing_object
         else:
             # If not found in cache, create the object
-            print(f"Creating new {object_type}: {lookup_value}") if self.DEBUG else None
+            print(f"Creating new {object_type}: {lookup_value}") if self.DEBUG == 1 else None
             new_object = self.create_object(object_type, data)
-
-            # Add the newly created object to the cache
             self.netbox_cache[object_type][cache_key] = new_object
             return new_object
 
@@ -124,18 +139,34 @@ class NetBoxManager:
     def compare_objects(self, existing_object, new_data):
         """Compare existing object with new data. Returns True if they match, False otherwise."""
         for key, value in new_data.items():
-            if getattr(existing_object, key, None) != value:
+            # Try both attribute and dictionary access
+            existing_value = existing_object.get(key, None)
+            print(f'{key}: {existing_value} :: {value}') if self.DEBUG == 1 else None 
+
+            # Handle fields that contain IDs in the existing object but names in the new data
+            if isinstance(existing_value, int) and isinstance(value, dict) and value.get('name'):
+                # Perform a reverse lookup to get the name from the ID
+                reverse_key = f"{key}s_{existing_value}"
+                print(f'looking up id for: {reverse_key}') if self.DEBUG == 1 else None 
+                if reverse_key in self.netbox_cache['id_lookup']:
+                    existing_value = {'name': self.netbox_cache['id_lookup'][reverse_key]['name']}
+                    print(f'after lookup {key}: {existing_value} :: {value}') if self.DEBUG == 1 else None 
+
+            # Normalize strings for comparison
+            if isinstance(existing_value, str) and isinstance(value, str):
+                existing_value = existing_value.strip().lower()
+                value = value.strip().lower()
+
+            if existing_value != value:
+                print('Cache and Fabric do NOT Match') if self.DEBUG == 1 else None    
                 return False
+        print('Cache and Fabric Match') if self.DEBUG == 1 else None   
         return True
-
-
 
     def create_virtual_chassis(self, vc_data):
         """Create or update a Virtual Chassis in NetBox with dependency checks."""
 
-        obj = self.create_or_update('virtual_chassis', 'name', vc_data['name'], vc_data)
-        pprint.pp(obj)
-        return obj
+        return self.create_or_update('virtual_chassis', 'name', vc_data['name'], vc_data)
 
     def create_device(self, device_data):
         """Create or update a device in NetBox with dependency and IP checks."""
@@ -161,7 +192,7 @@ class NetBoxManager:
 
         if 'device_type' in device_data:
             type_model = device_data['device_type']['model']
-            manufacturer = device_data['manufacturer']['name']
+            manufacturer = device_data.get('device_type', {}).get('manufacturer', {}).get('name', 'Generic')
             manufacturer_obj = self.create_or_update(
                 'manufacturers', 'name', manufacturer, {'name': manufacturer, 'slug': manufacturer.lower().replace(" ", "-")}
             )
@@ -211,7 +242,7 @@ class NetBoxManager:
         """Create or update a LAG in NetBox with dependency checks."""
         members=lag_data['members']
         lag_data.pop('members', None)        
-        print(f"Creating/Updating LAG {lag_data['name']}") if self.DEBUG else None
+        print(f"Creating/Updating LAG {lag_data['name']}") if self.DEBUG == 1 else None
         
         lag_data=self.create_or_update('interfaces', 'name', lag_data['name'], lag_data)
 
@@ -220,7 +251,7 @@ class NetBoxManager:
             member_data['lag']={'name': lag_data['name'], 'device': { 'name' : lag_data['device']['name'] } }
             member_data['device']={ 'name' : lag_data['device']['name'] }
             member_data['name']=member['name']
-            print(f"Adding {member['name']} to {lag_data['name']}") if self.DEBUG else None
+            print(f"Adding {member['name']} to {lag_data['name']}") if self.DEBUG == 1 else None
             self.create_or_update('interfaces', 'name', member_data['name'], member_data)
         
         
@@ -245,8 +276,8 @@ class NetBoxManager:
         )
 
         if existing_cable:
-            print(f"Connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}' already exists. Skipping creation.") if self.DEBUG else None
+            print(f"Connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}' already exists. Skipping creation.") if self.DEBUG == 1 else None
             return existing_cable
         else:
-            print(f"Creating new connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}'.") if self.DEBUG else None
+            print(f"Creating new connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}'.") if self.DEBUG == 1 else None
             return self.nb.dcim.cables.create(connection_data)

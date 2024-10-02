@@ -37,8 +37,7 @@ class BigSwitchFabric(NetworkFabric):
                 switch_info = {
                 'name': switch.get('name'),
                 'role': {'name': switch.get('fabric-role')},  
-                'device_type': {'model': switch.get('model-number-description')},
-                'manufacturer': { 'name': 'Generic'}, 
+                'device_type': {'model': switch.get('model-number-description'), 'manufacturer': { 'name': 'Generic'}}, 
                 'platform': re.sub(r'^([A-Za-z\ ]+)(\ )([A-Z0-9\:\-\(\)\.\,\ ]+).*$',r'\1',switch.get('software-description')),
                 'serial': switch.get('serial-number-description'),
                 'status': 'active' if switch.get('connected') else 'offline',
@@ -93,6 +92,7 @@ class BigSwitchFabric(NetworkFabric):
             ig_data=[]
             segment_data={}
             # Loop through the response at the "group" level
+            print(f"Found {len(interface_groups[0].get('name'))} interfaces groups")
             for group in interface_groups:
                 group_data = []
                 group_name = group.get('name')
@@ -150,6 +150,7 @@ class BigSwitchFabric(NetworkFabric):
                     
             print(f"Processing layer2 info..")
             segments = self.client.get("controller/applications/bcf/tenant/segment")
+
             for segment in segments:
                 # Extract the group name from 'interface-group-membership-rule' if available
                 if 'interface-group-membership-rule' in segment:
@@ -227,7 +228,6 @@ class BigSwitchFabric(NetworkFabric):
                         
                     for key,value in segment_data.items():
                         if str(key) == str(segment):
-                            print(f'Adding IP information to segment {segment} {ip4_address} {ip6_address}') if self.DEBUG else None
                             segment_data[key]['ip4_network']=ip4_network
                             segment_data[key]['ip6_network']=ip6_network
                             segment_data[key]['ip4_address']=ip4_address
