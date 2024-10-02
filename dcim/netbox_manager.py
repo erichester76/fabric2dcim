@@ -138,7 +138,11 @@ class NetBoxManager:
         """Compare existing object with new data. Returns True if they match, False otherwise."""
         for key, value in new_data.items():
             # Try both attribute and dictionary access
-            existing_value = existing_object.get(key, None)
+            if key in existing_object: 
+               existing_value = existing_object.get(key, None)
+            else:
+               existing_value = None
+
             print(f'{key}: {existing_value} :: {value}') if self.DEBUG == 1 else None 
 
             # Handle fields that contain IDs in the existing object but names in the new data
@@ -194,8 +198,9 @@ class NetBoxManager:
             manufacturer_obj = self.create_or_update(
                 'manufacturers', 'name', manufacturer, {'name': manufacturer, 'slug': manufacturer.lower().replace(" ", "-")}
             )
+            slug=manufacturer.lower().replace(" ", "-")+'-'+type_model.lower().replace(" ", "-")
             device_data['device_type'] = self.create_or_update(
-                'device_types', 'model', type_model, {'model': type_model, 'slug': manufacturer.lower().replace(" ", "-")+'-'+type_model.lower().replace(" ", "-"), 'manufacturer': manufacturer_obj.get('id')}
+                'device_types', 'model', type_model, {'model': type_model, 'slug': slug, 'manufacturer': manufacturer_obj.get('id')}
             ).get('id')
 
         if 'platform' in device_data:
@@ -217,8 +222,13 @@ class NetBoxManager:
         """Create or update an Interface in NetBox with dependency checks."""
 
         # Extract the media type and speed from the speed_type list
-        media_type = interface_data['speed_type'][0] if interface_data['speed_type'] else None
-        speed = interface_data['speed_type'][1] if interface_data['speed_type'] else None        
+        if interface_data.get('speed_type') and isinstance(interface_data['speed_type'], list):
+            media_type = interface_data['speed_type'][0] if len(interface_data['speed_type']) > 0 else None
+            speed = interface_data['speed_type'][1] if len(interface_data['speed_type']) > 1 else None
+        else:
+            media_type = None
+            speed = None
+
         interface_data['type'] = self.interface_netbox_type(interface_data.get('name'), speed, media_type)
         interface_data['mac_address']=interface_data['mac_address'].upper()
         del interface_data['speed_type']
