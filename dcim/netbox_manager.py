@@ -1,6 +1,4 @@
 import pynetbox
-import json
-import pprint
 
 from dcim.ip_manager import IPManager 
 from dcim.netbox_cache import NetBoxCache

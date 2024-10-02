@@ -1,6 +1,5 @@
 import pybsn
 import re
-import pprint
 import ipaddress
 from fabrics.network_fabric_base import NetworkFabric
     

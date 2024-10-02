@@ -1,2 +1,3 @@
 pybsn==0.4.1
 pynetbox==7.4.0
+requests==2.31.0

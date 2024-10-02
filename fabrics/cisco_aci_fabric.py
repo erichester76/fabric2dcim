@@ -1,4 +1,3 @@
-
 import requests
 from fabrics.network_fabric_base import NetworkFabric
 
