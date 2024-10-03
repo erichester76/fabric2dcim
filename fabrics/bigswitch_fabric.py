@@ -1,5 +1,6 @@
 import pybsn
 import re
+import pprint
 import ipaddress
 from fabrics.network_fabric_base import NetworkFabric
     
@@ -123,8 +124,7 @@ class BigSwitchFabric(NetworkFabric):
                         member_data['device'] = member_info.get('switch-name') 
                         member_data['interface'] = member_info.get('interface-name') if member_info.get('type') == 'switch' else None,
                 
-                        
-                    members.append(member_data) #skip the no interface entries
+                    members.append(member_data) 
 
                 # Create a dictionary for the processed group with all members in a single nest
                 group_data = {
@@ -146,7 +146,10 @@ class BigSwitchFabric(NetworkFabric):
                 if not merged: 
                     ig_data.append(group_data)
                     print(f'Adding group {group_name}') if self.DEBUG ==1 else None
-                    
+                
+                
+
+
             print(f"Processing layer2 info..")
             segments = self.client.get("controller/applications/bcf/tenant/segment")
 
@@ -245,9 +248,43 @@ class BigSwitchFabric(NetworkFabric):
     
     def get_connection_inventory(self):
         """Retrieve connection inventory from Big Switch."""
-        #get spine/leaf connections
-        core_links = self.client.get("controller/applications/bcf/info/fabric/link")
-        #use interface data for rest
         
+        cables = []
+        
+        # Collect Fabric Links between spines and leafs 
+        core_links = self.client.get("controller/applications/bcf/info/fabric/link")
+        print(f"Processing Fabric Links (Spine Leaf)")
+        print(f'Found {len(core_links)} interconnections')
+        
+        for link in core_links:
+            # Create a new dictionary for each cable
+            cable_data = {
+                'dst-device': link['dst']['switch-info']['switch-name'],
+                'dst-interface': link['dst']['interface']['name'],
+                'src-device': link['src']['switch-info']['switch-name'],
+                'src-interface': link['src']['interface']['name']
+            }
+            cables.append(cable_data) 
+        
+        # Collect connected devices information
+        connected_devices = self.client.get("controller/applications/bcf/info/fabric/connected-device")
+        print(f'Processing switch <> device interconnections')
+        print(f'Found {len(connected_devices)} interconnections')
+
+        for entry in connected_devices:
+            # Create a new dictionary for each device interconnection
+            cable_data = {
+                'dst-device': re.sub(r'([A-Za-z0-9]+)\..+', r'\1', entry['device']),
+                'dst-interface': entry['port-id'],
+                'src-device': entry['switch'],
+                'src-interface': entry['interface']
+            }
+            cables.append(cable_data) 
+        
+        return cables
+
+
+    
+    
         
     

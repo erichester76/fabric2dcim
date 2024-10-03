@@ -1,4 +1,6 @@
 import pynetbox
+import pprint
+import re
 
 from dcim.ip_manager import IPManager 
 from dcim.netbox_cache import NetBoxCache
@@ -13,6 +15,9 @@ class NetBoxManager:
         self.username = self.config.get('fabric_user')
         self.password = self.config.get('fabric_pass')
         self.default_site = self.config.get('netbox_site')
+        self.default_device_role = 'Switch/Router'
+        self.default_device_manufacturer = 'Generic'
+        self.default_device_model = 'Switch'
         self.DEBUG = self.config.get('debug')
         self.client = None
         # Initialize the NetBoxCache inside NetBoxManager
@@ -58,7 +63,20 @@ class NetBoxManager:
             '40g': {'fiber': '40gbase-x-qsfpp', 'copper': '40gbase-x-qsfpp'},
             '100g': {'fiber': '100gbase-x-cfp2', 'copper': '100gbase-x-cfp2'}
         }
+        
+        long_to_short_mapping = {
+            r'GigabitEthernet': 'Gi',        # 1G
+            r'TwoPointFiveGigabitEthernet': 'Two', # 2.5G
+            r'TenGigabitEthernet': 'Te',     # 10G
+            r'TwentyGigabitEthernet': 'Twe', # 20G
+            r'FortyGigabitEthernet': 'Fo',   # 40G
+            r'HundredGigabitEthernet': 'Hu'  # 100G
+        }
 
+        # Apply the regex substitution for long to short mapping
+        for long_name, short_name in long_to_short_mapping.items():
+            interface_name = re.sub(long_name, short_name, interface_name)
+        
         # Default to 'fiber' if type is not specified
         connection_type = 'fiber'
         if interface_type and 'copper' in interface_type.lower():
@@ -66,10 +84,10 @@ class NetBoxManager:
 
         # Check for matching speed in the mapping
         if speed and speed in speed_mapping:
-            return speed_mapping[speed][connection_type]
+            return (speed_mapping[speed][connection_type],interface_name)
 
         # Fallback if no match found
-        return 'other'
+        return ('other',interface_name)
 
     def create_or_update(self, object_type, lookup_field, lookup_value, data):
         """
@@ -89,18 +107,18 @@ class NetBoxManager:
         if object_type == 'interfaces':
             # Check if 'device' in the data is a dictionary (new_data) or an ID (existing_object)
             if isinstance(data['device'], dict) and 'name' in data['device']:
-                device_name = data['device']['name']
+                device_name = data['device'].get('name')
             else:
                 # Use reverse lookup to convert ID to name
                 device_id = data['device']
-                device_name = self.cache['id_lookup'].get(device_id, {}).get('name', f"UnknownDevice-{device_id}")
+                device_name = self.netbox_cache['id_lookup'].get('devices_'+str(device_id))
             
             cache_key = f"{device_name}_{data[lookup_field]}"  # Device Name + Interface Name
 
         elif object_type == 'virtual_interfaces':
             # Same logic for VM interfaces
             if isinstance(data['virtual_machine'], dict) and 'name' in data['virtual_machine']:
-                vm_name = data['virtual_machine']['name']
+                vm_name = data['virtual_machine'].get('name')
             else:
                 vm_id = data['virtual_machine']
                 vm_name = self.cache['id_lookup'].get(vm_id, {}).get('name', f"UnknownVM-{vm_id}")
@@ -229,7 +247,7 @@ class NetBoxManager:
             media_type = None
             speed = None
 
-        interface_data['type'] = self.interface_netbox_type(interface_data.get('name'), speed, media_type)
+        (interface_data['type'],interface_data['name']) = self.interface_netbox_type(interface_data.get('name'), speed, media_type)
         interface_data['mac_address']=interface_data['mac_address'].upper()
         del interface_data['speed_type']
 
@@ -264,28 +282,103 @@ class NetBoxManager:
         
         
     def create_connection(self, connection_data):
-        """Create or update a connection (cable) in NetBox with interface termination checks."""
-        lookup_value_a = connection_data['termination_a_id']
-        lookup_value_b = connection_data['termination_b_id']
+        """Create or update a connection (cable) in NetBox with device and interface checks, using cache."""
 
-        # Ensure the interfaces for the terminations exist
-        termination_a = self.nb.dcim.interfaces.get(id=lookup_value_a)
-        termination_b = self.nb.dcim.interfaces.get(id=lookup_value_b)
+        # Step 1: Check the cache for the source and destination devices
+        src_device_cache_key = f"{connection_data['src-device']}"
+        dst_device_cache_key = f"{connection_data['dst-device']}"
 
-        if not termination_a:
-            raise ValueError(f"Interface A with ID '{lookup_value_a}' does not exist.")
-        if not termination_b:
-            raise ValueError(f"Interface B with ID '{lookup_value_b}' does not exist.")
+        src_device = self.netbox_cache['devices'].get(src_device_cache_key)
+        dst_device = self.netbox_cache['devices'].get(dst_device_cache_key)
 
-        # Check if a cable already exists between the terminations
-        existing_cable = self.nb.dcim.cables.filter(
-            termination_a_id=lookup_value_a,
-            termination_b_id=lookup_value_b
-        )
+        if not src_device :
+            src_device_data = {
+                'name': connection_data['src-device'],
+                'status': 'active',
+                'role': {'name': self.default_device_role}, 
+                'device_type': {'model': self.default_device_model, 'manufacturer': {'name': self.default_device_manufacturer}}, 
+                'site': {'name': self.default_site} 
+            }
+            print(f"Src Device {connection_data['src-device']} missing. Creating")
+            src_device = self.create_or_update('devices', 'name', connection_data['src-device'], src_device_data)
+            self.netbox_cache['devices'][src_device_cache_key] = src_device
+            self.netbox_cache['id_lookup']['devices_'+src_device.get('id')] = src_device
 
+        if not dst_device:
+            dst_device_data = {
+                'name': connection_data['dst-device'],
+                'status': 'active',
+                'role': {'name': self.default_device_role}, 
+                'device_type': {'model': self.default_device_model, 'manufacturer': {'name': self.default_device_manufacturer}}, 
+                'site': {'name': self.default_site} 
+            }
+            print(f"Dst Device {connection_data['dst-device']} missing. Creating")
+            dst_device = self.create_or_update('devices', 'name', connection_data['dst-device'], dst_device_data)
+            self.netbox_cache['devices'][dst_device_cache_key] = dst_device
+            self.netbox_cache['id_lookup']['devices_'+dst_device.get('id')] = dst_device
+
+        if not src_device or not dst_device:
+            print(f"Failed to create or find devices: {connection_data['src-device']} or {connection_data['dst-device']}")
+            return None
+
+        # Step 2: Check the cache for the source and destination interfaces
+        src_interface_cache_key = f"{connection_data['src-device']}_{connection_data['src-interface']}"
+        dst_interface_cache_key = f"{connection_data['dst-device']}_{connection_data['dst-interface']}"
+
+        src_interface = self.netbox_cache['interfaces'].get(src_interface_cache_key)
+        dst_interface = self.netbox_cache['interfaces'].get(dst_interface_cache_key)
+
+        if not src_interface:
+            print(f"Creating new source interface for cable to attach to {src_device['name']} {connection_data['src-interface']}")
+            src_interface_data = {
+                'name': connection_data['src-interface'],
+                'device': src_device['id'],
+                'status': 'active',
+                'type': dst_interface.get('type')
+            }
+            src_interface = self.create_or_update('interfaces', 'name', connection_data['src-interface'], src_interface_data)
+            self.netbox_cache['interfaces'][src_interface_cache_key] = src_interface
+
+        if not dst_interface:
+            print(f"Creating new destination interface for cable to attach to {dst_device['name']} {connection_data['dst-interface']}")
+            dst_interface_data = {
+                'name': connection_data['dst-interface'],
+                'device': dst_device['id'],
+                'status': 'active',
+                'type': src_interface.get('type')
+            }
+            dst_interface = self.create_or_update('interfaces', 'name', connection_data['dst-interface'], dst_interface_data)
+            self.netbox_cache['interfaces'][dst_interface_cache_key] = dst_interface
+
+        if not src_interface or not dst_interface:
+            print(f"Failed to create or find interfaces: {connection_data['src-interface']} or {connection_data['dst-interface']}")
+            return None
+
+        # Step 3: Check the cache for the cable between these interfaces using the object_type_id format
+        cable_cache_key = f"{src_interface['id']}_{dst_interface['id']}"
+        reverse_cable_cache_key = f"{dst_interface['id']}_{src_interface['id']}"
+
+        # Check if the cable exists in either direction in the cache
+        existing_cable = self.netbox_cache['cables'].get(cable_cache_key) or self.netbox_cache['cables'].get(reverse_cable_cache_key)
         if existing_cable:
-            print(f"Connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}' already exists. Skipping creation.") if self.DEBUG == 1 else None
-            return existing_cable
-        else:
-            print(f"Creating new connection (cable) between A '{lookup_value_a}' and B '{lookup_value_b}'.") if self.DEBUG == 1 else None
-            return self.nb.dcim.cables.create(connection_data)
+            print(f"Existing cable found between {connection_data['src-device']} and {connection_data['dst-device']}.")
+            return None
+        # Step 4: Create the cable (connection) in NetBox
+        new_cable = self.nb.dcim.cables.create(
+          a_terminations= [
+                {
+                "object_type": "dcim.interface",  
+                "object_id": src_interface['id']
+                }
+             ],
+          b_terminations= [
+              {
+              "object_type": "dcim.interface",  
+              "object_id": dst_interface['id']
+              }
+             ],
+          )        # Add the new cable to the cache in both directions
+        self.netbox_cache[cable_cache_key] = new_cable
+        self.netbox_cache[reverse_cable_cache_key] = new_cable
+
+        return new_cable

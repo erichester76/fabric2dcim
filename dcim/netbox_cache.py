@@ -22,7 +22,7 @@ class NetBoxCache:
             'platforms': (self.netbox.dcim.platforms, 'name'),
             'sites': (self.netbox.dcim.sites, 'name'),
             'interfaces': (self.netbox.dcim.interfaces, lambda i: f"{i.device.name}_{i.name}"),
-            'cables': (self.netbox.dcim.cables, 'id'),
+            'cables': (self.netbox.dcim.cables, lambda c: f"{c.a_terminations[0].id}_{c.b_terminations[0].id}"),
             'vlans': (self.netbox.ipam.vlans, 'id'),
             'fhrp_groups': (self.netbox.ipam.fhrp_groups, 'id'),
             'prefixes': (self.netbox.ipam.prefixes, 'prefix'),
@@ -34,11 +34,11 @@ class NetBoxCache:
 
         self.preload_objects()
 
-    def __del__(self):
-        """Destructor method, called when the object is destroyed."""
-        if self.DEBUG:
-            print("Destructor called, saving cache to file...")
-        self.save_cache_to_file()
+    # def __del__(self):
+    #     """Destructor method, called when the object is destroyed."""
+    #     if self.DEBUG:
+    #         print("Destructor called, saving cache to file...")
+    #     self.save_cache_to_file()
 
     def preload_objects(self):
         """Preload objects either from file or from NetBox based on cache time."""
@@ -75,6 +75,7 @@ class NetBoxCache:
                 if 'id' in  obj:
                     string_key = f"{object_type}_{obj['id']}"
                     self.cache['id_lookup'][string_key] = obj
+                
 
         # Second pass: Now that the cache is fully populated, normalize the values
         for object_type in self.object_mapping.keys():
@@ -137,3 +138,4 @@ class NetBoxCache:
     def get_cache(self):
         """Return the preloaded cache."""
         return self.cache
+    

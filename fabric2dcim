@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import re
+import pprint
 from fabrics.bigswitch_fabric import BigSwitchFabric
 from fabrics.cisco_aci_fabric import CiscoACIFabric
 from dcim.netbox_manager import NetBoxManager
@@ -31,8 +32,12 @@ def main():
     # Initialize the appropriate fabric based on the fabric-type argument
     if config.get('fabric_type').lower() == 'bigswitch':
         fabric = BigSwitchFabric(config, ip_manager)
+        manufacturer = 'Arista' 
+
     elif config.get('fabric_type').lower() == 'cisco-aci':
         fabric = CiscoACIFabric(config, ip_manager)
+        manufacturer = 'Cisco'
+
     else:
         raise ValueError("Unsupported fabric type. Supported values are 'bigswitch' and 'cisco-aci'.")
 
@@ -46,11 +51,6 @@ def main():
     print(f"Creating/Updating Virtual Chassis and Controller {vc['name']} for Fabric")
 
     # Create Virtual Device to represent Fabric Controller
-    if 'bigswitch' in config.get('fabric_type').lower(): 
-        manufacturer = 'Arista' 
-    elif 'cisco-aci' in config.get('fabric_type').lower():
-        manufacturer = 'Cisco'
-
     controller['name'] = vc['name']+" Controller"
     controller['device_type'] = {'model': 'Fabric Controller'}
     controller['manufacturer']= {'name': manufacturer}
@@ -82,7 +82,7 @@ def main():
         netbox_manager.create_device(switch)
         
         # Create Virtual Device to represent Fabric Controller
-        print(f'Adding/Updating {switch.get("name")} to Fabric Virtual Chassis') if DEBUG else None
+        print(f'Adding/Updating {switch.get("name")} to Fabric Virtual Chassis') if DEBUG == 1 else None
             
     # Sync interfaces to NetBox
     print(f'Collecting Interfaces from Fabric')
@@ -92,12 +92,12 @@ def main():
            for interface in switch['interfaces']:
               netbox_manager.create_interface(interface)
 
-    print(f'Setting Primary IPs on Devices') if DEBUG else None
+    print(f'Setting Primary IPs on Devices') if DEBUG == 1 else None
     netbox_manager.update_device_with_primary_ips()
     
     # Sync Network Topology to NetBox
     print(f'Collecting Network Topology from Fabric')
-    (networks,segments) = fabric.get_network_inventory()
+    (interface_groups,segments) = fabric.get_network_inventory()
      
     # Sync VLANs
     print(f'Creating/Updating VLANs in Netbox')
@@ -110,10 +110,11 @@ def main():
     
     # Sync connections (cables) to NetBox
     print(f'Collecting Connections from Fabric')
-    #connections = fabric.get_connection_inventory()
-    #if connections:
-    #    for connection in connections:
-    #       netbox_manager.create_connection(connection)
+    cables = fabric.get_connection_inventory()
+    if cables:
+        for cable in cables:
+           print(f'Processing cable between {cable["src-device"]} and {cable["dst-device"]}')
+           netbox_manager.create_connection(cable)
 
 if __name__ == "__main__":
     main()
