@@ -11,7 +11,7 @@ class ConfigManager:
         Load configuration values from command-line arguments.
         """
         parser = argparse.ArgumentParser(description="Sync network fabric information to NetBox")
-        parser.add_argument('--fabric-type', type=str, help='Fabric type (bigswitch or cisco-aci) (FABRIC_TYPE environment variable)')
+        parser.add_argument('--fabric-type', type=str, help='Fabric type (bigswitch, cisco-nx, cisco-aci, cisco-dnac) (FABRIC_TYPE environment variable)')
         parser.add_argument('--fabric-url', type=str, help='Fabric controller URL (FABRIC_URL environment variable)')
         parser.add_argument('--fabric-name', type=str, help='Fabric controller name (FABRIC_URL environment variable)')
         parser.add_argument('--username', type=str, help='Fabric username (FABRIC_USERNAME environment variable)')
