@@ -237,8 +237,6 @@ class BigSwitchFabric(NetworkFabric):
                             segment_data[key]['ip4_virtual']=ip4_virtual
                             segment_data[key]['ip6_virtual']=ip6_virtual
                             
-                # Update the group data at the found index
-
             return (ig_data,segment_data)
             
         except Exception as e:
@@ -280,7 +278,20 @@ class BigSwitchFabric(NetworkFabric):
                 'src-interface': entry['interface']
             }
             cables.append(cable_data) 
+        #vni_links = self.client.get("applications/bcf/info/endpoint-manager/extended-segment")
+        #print(f'Processing vxlan interconnections')
+        #print(f'Found {len(vni_links)} interconnections')
         
+        #for entry in vni_links:
+        #    # Create a new dictionary for each device interconnection
+        #    cable_data = {
+        #        'dst-device': re.sub(r'([A-Za-z0-9]+)\..+', r'\1', entry['device']),
+        #        'dst-interface': entry['port-id'],
+        #        'src-device': entry['switch'],
+        #        'src-interface': entry['interface']
+        #    }
+        #    cables.append(cable_data) 
+
         return cables
 
 

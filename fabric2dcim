@@ -4,6 +4,7 @@ import re
 import pprint
 from fabrics.bigswitch_fabric import BigSwitchFabric
 from fabrics.cisco_aci_fabric import CiscoACIFabric
+from fabrics.cisco_dnac import CiscoDNAC
 from dcim.netbox_manager import NetBoxManager
 from config.config_manager import ConfigManager
 from dcim.ip_manager import IPManager
@@ -37,6 +38,11 @@ def main():
     elif config.get('fabric_type').lower() == 'cisco-aci':
         fabric = CiscoACIFabric(config, ip_manager)
         manufacturer = 'Cisco'
+    
+    elif config.get('fabric_type').lower() == 'cisco-dnac':
+        fabric = CiscoDNAC(config, ip_manager)
+        manufacturer = 'Cisco'
+
 
     else:
         raise ValueError("Unsupported fabric type. Supported values are 'bigswitch' and 'cisco-aci'.")
@@ -100,12 +106,17 @@ def main():
     (interface_groups,segments) = fabric.get_network_inventory()
      
     # Sync VLANs
+    # if VNI create VTEP Loopback Interfaces, add vlans and add vni links as l2vpn
+    # Create VLAN Layer3 interfaces and assign IPs if ip assigned
+    # if Virtual-IP create FHRP Group
     print(f'Creating/Updating VLANs in Netbox')
+
     # Sync Prefixes
     print(f'Creating/Updating Prefixes in Netbox')
-    # Sync VLAN Layer3 interfaces
+
     print(f'Creating/Updating VLAN Layer3 Interfaces in Netbox')
-    # Sync LAGss
+    # Sync LAGs
+
     print(f'Creating/Updating LAGs in Netbox')
     
     # Sync connections (cables) to NetBox
