@@ -162,7 +162,10 @@ class NetBoxManager:
             # If not found in cache, create the object
             print(f"Creating new {object_type}: {lookup_value}") if self.DEBUG == 1 else None
             new_object = self.create_object(object_type, data)
+            #update forward and reverse cache for new object
             self.netbox_cache[object_type][cache_key] = new_object
+            string_key = f"{object_type}_{new_object['id']}"
+            self.netbox_cache['id_lookup'][string_key] = new_object
             return new_object
 
 
@@ -174,7 +177,9 @@ class NetBoxManager:
         try:
             # Call the API to create the object and get it imemdiately to get a complete object
             response = api_section.create(data)
-            return api_section.get(response.id)
+            new_object = api_section.get(response.id)
+            pprint.pp(new_object)
+            return new_object
         
         except Exception as e:
             print(f"Error creating {object_type}: {e}")
