@@ -34,12 +34,17 @@ class CiscoDNAC(NetworkFabric):
             devices_data = []
 
             for device in devices.response:
-                pprint.pp(device)
-                model = re.sub(r'^C',r'Catalyst ',device.platformId)
-                model = re.sub(r'^([^\,]+)\,.+',r'\1', model)
+                model = re.sub(r'^C',r'Catalyst ',device.platformId) #deal with setting model name to Catalyst for CXXXX names
+                model = re.sub(r'^AIR\-AP',r'Aironet ',model) #deal with setting model name to aironet for CAPs
+                model = re.sub(r'^AIR\-CAP',r'Aironet ',model) #deal with setting model name to aironet for CAPs
+                model = re.sub(r'\-K9$',r'',model) #deal with models with -K9 appended
+                model = re.sub(r'^([^\,]+)\,.+',r'\1', model) #deal with stack models ( model, model, model, model )
+                role = device.family
+                name = re.sub(r'(^[^\.]+)\.clemson\.edu)',r'\1',device.hostname)
+                
                 device_info = {
-                    'name': device.hostname,
-                    'role': {'name': device.role},
+                    'name': name,
+                    'role': {'name': role},
                     'device_type': {'model': model, 'manufacturer': {'name': 'Cisco'}, 'part_number': device.platformId},
                     'platform': str(device.softwareType)+" "+str(device.softwareVersion),
                     'serial': device.serialNumber,

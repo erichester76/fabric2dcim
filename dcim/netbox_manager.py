@@ -60,7 +60,7 @@ class NetBoxManager:
             'Gi': '1g',    # GigabitEthernet (1G)
             'Two': '2.5g', #TwoPointFiveGigabitEthernet (2.5G)
             'Te': '10g',   # TenGigabitEthernet (10G)
-            'Twe': '20g',   # TenGigabitEthernet (20G)
+            'Twe': '20g',   # TwentyFiveGigabitEthernet (20G)
             'Fo': '40g',   # FortyGigabitEthernet (40G)
             'Hu': '100g',  # HundredGigabitEthernet (100G)
         }
@@ -86,7 +86,7 @@ class NetBoxManager:
             r'GigabitEthernet': 'Gi',        # 1G
             r'TwoPointFiveGigabitEthernet': 'Two', # 2.5G
             r'TenGigabitEthernet': 'Te',     # 10G
-            r'TwentyGigabitEthernet': 'Twe', # 20G
+            r'TwentyFiveGigabitEthernet': 'Twe', # 25G
             r'FortyGigabitEthernet': 'Fo',   # 40G
             r'HundredGigabitEthernet': 'Hu'  # 100G
         }
@@ -165,7 +165,7 @@ class NetBoxManager:
         else:
        
             # If not found in cache, create the object
-            print(f"Creating new {object_type}: {lookup_value}") if self.DEBUG == 1 else None
+            print(f"Creating new {object_type}: {lookup_value}") #if self.DEBUG == 1 else None
             new_object = self.create_object(object_type, data)
             #update forward and reverse cache for new object
             self.netbox_cache[object_type][cache_key] = new_object
@@ -263,9 +263,9 @@ class NetBoxManager:
             manufacturer_obj = self.create_or_update(
                 'manufacturers', 'name', manufacturer, {'name': manufacturer, 'slug': self.generate_slug(manufacturer)}
             )
-            slug=self.generate_slug(manufacturer)+'-'+self.generate_slug(type_model)
+            slug=self.generate_slug(manufacturer)+'-'+self.generate_slug(device_data['device_type']['part_number'] if device_data['device_type']['part_number'] else type_model)
             device_data['device_type'] = self.create_or_update(
-                'device_types', 'model', type_model, {'model': type_model, 'slug': slug, 'manufacturer': manufacturer_obj.get('id')}
+                'device_types', 'model', type_model, {'model': type_model, 'slug': slug, 'part_number': device_data["device_type"]["part_number"] if device_data["device_type"]["part_number"] else None, 'manufacturer': manufacturer_obj.get('id')}
             ).get('id')
 
         if 'platform' in device_data:
