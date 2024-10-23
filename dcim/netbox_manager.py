@@ -110,6 +110,9 @@ class NetBoxManager:
         if speed and speed in speed_mapping:
             return (speed_mapping[speed][connection_type],interface_name)
 
+        if 'Vlan' in interface_name or 'Bluetooth' in interface_name:
+            return ('virtual', interface_name)
+        
         # Fallback if no match found
         return ('other',interface_name)
 
