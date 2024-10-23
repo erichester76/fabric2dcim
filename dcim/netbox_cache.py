@@ -72,7 +72,7 @@ class NetBoxCache:
                 self.cache[object_type][cache_key] = obj
                 
                 # Populate the reverse lookup cache by ID
-                if 'id' in  obj:
+                if 'id' in obj:
                     string_key = f"{object_type}_{obj['id']}"
                     self.cache['id_lookup'][string_key] = obj
                 

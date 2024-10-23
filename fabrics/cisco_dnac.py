@@ -34,11 +34,14 @@ class CiscoDNAC(NetworkFabric):
             devices_data = []
 
             for device in devices.response:
+                pprint.pp(device)
+                model = re.sub(r'^C',r'Catalyst ',device.platformId)
+                model = re.sub(r'^([^\,]+)\,.+',r'\1', model)
                 device_info = {
                     'name': device.hostname,
                     'role': {'name': device.role},
-                    'device_type': {'model': device.type, 'manufacturer': {'name': 'Cisco'}},
-                    'platform': device.platformId,
+                    'device_type': {'model': model, 'manufacturer': {'name': 'Cisco'}, 'part_number': device.platformId},
+                    'platform': str(device.softwareType)+" "+str(device.softwareVersion),
                     'serial': device.serialNumber,
                     'status': 'active' if device.reachabilityStatus == 'Reachable' else 'offline',
                     'primary_ip4': f"{device.managementIpAddress}/32" if device.managementIpAddress else None,

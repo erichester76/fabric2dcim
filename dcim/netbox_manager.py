@@ -21,8 +21,8 @@ class NetBoxManager:
         self.DEBUG = self.config.get('debug')
         self.client = None
         # Initialize the NetBoxCache inside NetBoxManager
-        nb_cacher = NetBoxCache(self.config, self.nb)
-        self.netbox_cache = nb_cacher.cache
+        self.nb_cacher = NetBoxCache(self.config, self.nb)
+        self.netbox_cache = self.nb_cacher.cache
         # Object mapping: maps object_type to (API section, lookup key)
         self.object_mapping = {
             'virtual_chassis': (self.nb.dcim.virtual_chassis, 'name'),
@@ -150,15 +150,20 @@ class NetBoxManager:
         if cache_key in self.netbox_cache[object_type]:
             print(f"Using cached {object_type}: {lookup_value} {cache_key}") if self.DEBUG == 1 else None
             existing_object = self.netbox_cache[object_type][cache_key]
-
             # Compare and update if necessary
             no_change = not existing_object or self.compare_objects(existing_object, data)
             if not no_change:  
                 print(f"Updating {object_type}: {lookup_value}") if self.DEBUG == 1 else None
                 existing_object.update(data)  
-                self.netbox_cache[object_type][cache_key] = existing_object  # Update cache with new data
+                # Update cache with new data
+                self.netbox_cache[object_type][cache_key] = existing_object  
+                string_key = f"{object_type}_{existing_object['id']}"
+                self.netbox_cache['id_lookup'][string_key] = existing_object
+            
             return existing_object
+       
         else:
+       
             # If not found in cache, create the object
             print(f"Creating new {object_type}: {lookup_value}") if self.DEBUG == 1 else None
             new_object = self.create_object(object_type, data)
@@ -166,6 +171,7 @@ class NetBoxManager:
             self.netbox_cache[object_type][cache_key] = new_object
             string_key = f"{object_type}_{new_object['id']}"
             self.netbox_cache['id_lookup'][string_key] = new_object
+       
             return new_object
 
 
@@ -195,7 +201,7 @@ class NetBoxManager:
             else:
                existing_value = None
 
-            print(f'{key}: {existing_value} :: {value}') if self.DEBUG == 1 else None 
+            print(f'COMPARING {key}: {existing_value} :: {value}') if self.DEBUG == 1 else None 
 
             # Handle fields that contain IDs in the existing object but names in the new data
             if isinstance(existing_value, int) and isinstance(value, dict) and value.get('name'):
@@ -212,9 +218,10 @@ class NetBoxManager:
                 value = value.strip().lower()
 
             if existing_value != value:
-                print('Cache and Fabric do NOT Match') if self.DEBUG == 1 else None    
+                print('CONCLUSION: Cache and Fabric do NOT Match') if self.DEBUG == 1 else None    
                 return False
-        print('Cache and Fabric Match') if self.DEBUG == 1 else None   
+            
+        print('CONCLUSION: Cache and Fabric Match') if self.DEBUG == 1 else None   
         return True
 
     def create_virtual_chassis(self, vc_data):

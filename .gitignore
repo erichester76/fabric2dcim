@@ -1,5 +1,4 @@
 netbox-bcf.py
-.env.cu.*
-.env
+.env*
 scripts
 netbox_cache.json
