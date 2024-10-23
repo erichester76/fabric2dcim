@@ -2,6 +2,7 @@ from dnacentersdk import api
 from fabrics.network_fabric_base import NetworkFabric
 import re
 import ipaddress
+import pprint
 
 # Cisco DNA Center Subclass
 class CiscoDNAC(NetworkFabric):
@@ -36,8 +37,8 @@ class CiscoDNAC(NetworkFabric):
                 device_info = {
                     'name': device.hostname,
                     'role': {'name': device.role},
-                    'device_type': {'model': device.platformId, 'manufacturer': {'name': 'Cisco'}},
-                    'platform': device.softwareVersion,
+                    'device_type': {'model': device.type, 'manufacturer': {'name': 'Cisco'}},
+                    'platform': device.platformId,
                     'serial': device.serialNumber,
                     'status': 'active' if device.reachabilityStatus == 'Reachable' else 'offline',
                     'primary_ip4': f"{device.managementIpAddress}/32" if device.managementIpAddress else None,

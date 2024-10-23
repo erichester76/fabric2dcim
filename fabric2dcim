@@ -50,41 +50,44 @@ def main():
     # Connect to the fabric
     fabric.connect()
     
-    # Create Virtual Chassis to represent Fabric
-    controller = {}  
-    vc={}
-    vc['name'] = config.get('fabric_name') or (config.get('fabric_type').upper()+'-'+re.sub(r'http[s]*\:\/\/([0-9A-z]*)\.*.*',r'\1',config.get('fabric_url').lower())).upper()
-    print(f"Creating/Updating Virtual Chassis and Controller {vc['name']} for Fabric")
+    if (config.get('fabric_type').lower() != 'cisco-dnac'):
+        # Create Virtual Chassis to represent Fabric
+        controller = {}  
+        vc={}
+        vc['name'] = config.get('fabric_name') or (config.get('fabric_type').upper()+'-'+re.sub(r'http[s]*\:\/\/([0-9A-z]*)\.*.*',r'\1',config.get('fabric_url').lower())).upper()
+        print(f"Creating/Updating Virtual Chassis and Controller {vc['name']} for Fabric")
 
-    # Create Virtual Device to represent Fabric Controller
-    controller['name'] = vc['name']+" Controller"
-    controller['device_type'] = {'model': 'Fabric Controller'}
-    controller['manufacturer']= {'name': manufacturer}
-    controller['role']={'name': 'Network Fabric Controller'}
-    controller['status']='active'
-    controller['site']={'name': config.get('netbox_site')}
+        # Create Virtual Device to represent Fabric Controller
+        controller['name'] = vc['name']+" Controller"
+        controller['device_type'] = {'model': 'Fabric Controller'}
+        controller['manufacturer']= {'name': manufacturer}
+        controller['role']={'name': 'Network Fabric Controller'}
+        controller['status']='active'
+        controller['site']={'name': config.get('netbox_site')}
         
-    # Create virtual chassis and get id to use for controllers virtual chassis
-    vc_id = netbox_manager.create_virtual_chassis(vc)['id']
-    vc_position=0
-    controller['virtual_chassis']=vc_id
-    controller['vc_position']=vc_position
-    controller['vc_priority']=0
+        
+        # Create virtual chassis and get id to use for controllers virtual chassis
+        vc_id = netbox_manager.create_virtual_chassis(vc)['id']
+        vc_position=0
+        controller['virtual_chassis']=vc_id
+        controller['vc_position']=vc_position
+        controller['vc_priority']=0
 
-    # Create controller and take id to set master on virtual chassis
-    controller = netbox_manager.create_device(controller)
-    vc['master']=controller['id']
-    vc = netbox_manager.create_virtual_chassis(vc)
+        # Create controller and take id to set master on virtual chassis
+        controller = netbox_manager.create_device(controller)
+        vc['master']=controller['id']
+        vc = netbox_manager.create_virtual_chassis(vc)
 
     # Sync switches to NetBox
     print(f'Collecting Devices from Fabric')
     switches = fabric.get_device_inventory()
     for switch in switches:
-        switch['virtual_chassis']=vc_id
-        vc_position=vc_position+1
-        switch['vc_position']=vc_position
-        switch['vc_priority']=0
-        switch['site']={'name': config.get('netbox_site')}
+        if (config.get('fabric_type').lower() != 'cisco-dnac'):
+            switch['virtual_chassis']=vc_id
+            vc_position=vc_position+1
+            switch['vc_position']=vc_position
+            switch['vc_priority']=0
+            switch['site']={'name': config.get('netbox_site')}
         netbox_manager.create_device(switch)
         
         # Create Virtual Device to represent Fabric Controller

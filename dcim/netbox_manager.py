@@ -23,8 +23,26 @@ class NetBoxManager:
         # Initialize the NetBoxCache inside NetBoxManager
         nb_cacher = NetBoxCache(self.config, self.nb)
         self.netbox_cache = nb_cacher.cache
-        self.object_mapping = nb_cacher.object_mapping
-        
+        # Object mapping: maps object_type to (API section, lookup key)
+        self.object_mapping = {
+            'virtual_chassis': (self.nb.dcim.virtual_chassis, 'name'),
+            'racks': (self.nb.dcim.racks, 'name'),
+            'devices': (self.nb.dcim.devices, 'name'),
+            'device_roles': (self.nb.dcim.device_roles, 'name'),
+            'device_types': (self.nb.dcim.device_types, 'model'),
+            'manufacturers': (self.nb.dcim.manufacturers, 'name'),
+            'platforms': (self.nb.dcim.platforms, 'name'),
+            'sites': (self.nb.dcim.sites, 'name'),
+            'interfaces': (self.nb.dcim.interfaces, lambda i: f"{i.device.name}_{i.name}"),
+            'cables': (self.nb.dcim.cables, lambda c: f"{c.a_terminations[0].id}_{c.b_terminations[0].id}"),
+            'vlans': (self.nb.ipam.vlans, 'id'),
+            'fhrp_groups': (self.nb.ipam.fhrp_groups, 'id'),
+            'prefixes': (self.nb.ipam.prefixes, 'prefix'),
+            'ip_addresses': (self.nb.ipam.ip_addresses, 'address'),
+            'virtual_machines': (self.nb.virtualization.virtual_machines, 'name'),
+            'virtual_interfaces': (self.nb.virtualization.interfaces, lambda i: f"{i.virtual_machine.name}_{i.name}"),
+            'virtual_clusters': (self.nb.virtualization.clusters, 'name'),
+        }        
     def interface_netbox_type(self, interface_name, speed=None, interface_type=None):
         """
         Convert fabric interface definition to NetBox interface type.
@@ -147,10 +165,21 @@ class NetBoxManager:
             self.netbox_cache[object_type][cache_key] = new_object
             return new_object
 
+
     def create_object(self, object_type, data):
         """Helper method to create a new object in NetBox."""
+        
         api_section, _ = self.object_mapping[object_type]
-        return api_section.create(data)
+        
+        try:
+            # Call the API to create the object and get it imemdiately to get a complete object
+            response = api_section.create(data)
+            return api_section.get(response.id)
+        
+        except Exception as e:
+            print(f"Error creating {object_type}: {e}")
+            return None
+
 
     def compare_objects(self, existing_object, new_data):
         """Compare existing object with new data. Returns True if they match, False otherwise."""
@@ -188,11 +217,17 @@ class NetBoxManager:
 
         return self.create_or_update('virtual_chassis', 'name', vc_data['name'], vc_data)
 
+    def generate_slug(self,value):
+        # Convert to lowercase, replace spaces with hyphens, and remove invalid characters
+        value = value.lower()
+        value = re.sub(r'\s+', '-', value)  # Replace spaces with hyphens
+        value = re.sub(r'[^a-z0-9_-]', '', value)  # Remove characters that aren't letters, numbers, underscores, or hyphens
+        return value
+    
     def create_device(self, device_data):
         """Create or update a device in NetBox with dependency and IP checks."""
         
         # Store the IPs to assign after interfaces are created
-        device_name = device_data['name']
         self.ip_manager.store_ip_for_device = {
             'name': device_data['name'],
             'primary_ip4': device_data.get('primary_ip4'),
@@ -207,16 +242,16 @@ class NetBoxManager:
         if 'role' in device_data:
             role_name = device_data['role']['name']
             device_data['role'] = self.create_or_update(
-                'device_roles', 'name', role_name, {'name': role_name, 'slug': role_name.lower().replace(" ", "-")}
+                'device_roles', 'name', role_name, {'name': role_name, 'slug': self.generate_slug(role_name)}
             ).get('id')
 
         if 'device_type' in device_data:
             type_model = device_data['device_type']['model']
             manufacturer = device_data.get('device_type', {}).get('manufacturer', {}).get('name', 'Generic')
             manufacturer_obj = self.create_or_update(
-                'manufacturers', 'name', manufacturer, {'name': manufacturer, 'slug': manufacturer.lower().replace(" ", "-")}
+                'manufacturers', 'name', manufacturer, {'name': manufacturer, 'slug': self.generate_slug(manufacturer)}
             )
-            slug=manufacturer.lower().replace(" ", "-")+'-'+type_model.lower().replace(" ", "-")
+            slug=self.generate_slug(manufacturer)+'-'+self.generate_slug(type_model)
             device_data['device_type'] = self.create_or_update(
                 'device_types', 'model', type_model, {'model': type_model, 'slug': slug, 'manufacturer': manufacturer_obj.get('id')}
             ).get('id')
@@ -224,13 +259,13 @@ class NetBoxManager:
         if 'platform' in device_data:
             platform_name = device_data['platform']
             device_data['platform'] = self.create_or_update(
-                'platforms', 'name', platform_name, {'name': platform_name, 'slug': platform_name.lower().replace(" ", "-")}
+                'platforms', 'name', platform_name, {'name': platform_name, 'slug': self.generate_slug(platform_name)}
             ).get('id')
 
         if 'site' in device_data:
             site_name = device_data['site']['name']
             device_data['site'] = self.create_or_update(
-                'sites', 'name', site_name, {'name': site_name, 'slug': site_name.lower().replace(" ", "-")}
+                'sites', 'name', site_name, {'name': site_name, 'slug': self.generate_slug(site_name)}
             ).get('id')
 
         # Now create the device itself
