@@ -59,6 +59,7 @@ class NetBoxManager:
         cisco_interface_speeds = {
             'Gi': '1g',    # GigabitEthernet (1G)
             'Two': '2.5g', #TwoPointFiveGigabitEthernet (2.5G)
+            'Fiv': '5g',
             'Te': '10g',   # TenGigabitEthernet (10G)
             'Twe': '20g',   # TwentyFiveGigabitEthernet (20G)
             'Fo': '40g',   # FortyGigabitEthernet (40G)
@@ -75,26 +76,31 @@ class NetBoxManager:
         speed_mapping = {
             '1g': {'fiber': '1000base-x-gbic', 'copper': '1000base-t'},
             '25g': {'fiber': '2.5gbase-x-sfp', 'copper': '2.5gbase-t'},
-            '5g': {'fiber': '5gbase-x-sfp', 'copper': '5gbase-t'},
+            '5g': {'fiber': '5gbase-t', 'copper': '5gbase-t'},
             '10g': {'fiber': '10gbase-x-sfpp', 'copper': '10gbase-t'},
             '25g': {'fiber': '25gbase-x-sfp28', 'copper': '25gbase-x-sfp28'},
             '40g': {'fiber': '40gbase-x-qsfpp', 'copper': '40gbase-x-qsfpp'},
             '100g': {'fiber': '100gbase-x-cfp2', 'copper': '100gbase-x-cfp2'}
         }
         
-        long_to_short_mapping = {
-            r'GigabitEthernet': 'Gi',        # 1G
-            r'TwoPointFiveGigabitEthernet': 'Two', # 2.5G
-            r'TenGigabitEthernet': 'Te',     # 10G
-            r'TwentyFiveGigabitEthernet': 'Twe', # 25G
-            r'FortyGigabitEthernet': 'Fo',   # 40G
-            r'HundredGigabitEthernet': 'Hu'  # 100G
+        short_to_long_mapping = {
+            'Gi': 'GigabitEthernet',  # 1G
+            'Two': 'TwoPointFiveGigabitEthernet',  # 2.5G
+            'Fi': 'FiveGigabitEthernet',  # 5G
+            'Te': 'TenGigabitEthernet',  # 10G
+            'Twe': 'TwentyFiveGigabitEthernet',  # 25G
+            'Fo': 'FortyGigabitEthernet',  # 40G
+            'Hu': 'HundredGigabitEthernet'  # 100G
         }
 
-        # Apply the regex substitution for long to short mapping
-        for long_name, short_name in long_to_short_mapping.items():
-            interface_name = re.sub(long_name, short_name, interface_name)
-        
+        # Apply the regex substitution for short to long mapping
+        for short_name, long_name in short_to_long_mapping.items():
+            # Match the short interface name and capture the interface numbers (e.g., Gi1/0/1)
+            my_regex = r"(" + re.escape(short_name) + r")(\d.+$)"
+            
+            # Replace the short name with the corresponding long name
+            interface_name = re.sub(my_regex, long_name + r'\2', interface_name)
+                    
         # Default to 'fiber' if type is not specified
         connection_type = 'fiber'
         if interface_type and 'copper' in interface_type.lower():
@@ -153,7 +159,7 @@ class NetBoxManager:
             # Compare and update if necessary
             no_change = not existing_object or self.compare_objects(existing_object, data)
             if not no_change:  
-                print(f"Updating {object_type}: {lookup_value}") if self.DEBUG == 1 else None
+                print(f"Updating {object_type}: {lookup_value}") #if self.DEBUG == 1 else None
                 existing_object.update(data)  
                 # Update cache with new data
                 self.netbox_cache[object_type][cache_key] = existing_object  
@@ -264,9 +270,11 @@ class NetBoxManager:
                 'manufacturers', 'name', manufacturer, {'name': manufacturer, 'slug': self.generate_slug(manufacturer)}
             )
             slug=self.generate_slug(manufacturer)+'-'+self.generate_slug(device_data['device_type']['part_number'] if device_data['device_type']['part_number'] else type_model)
+            #print(f"'device_types', 'model', {type_model}, 'model': {type_model}, 'slug': {slug}, 'part_number': {device_data['device_type']['part_number'] if device_data['device_type']['part_number'] else None}, 'manufacturer': {manufacturer_obj.get('id')}")
             device_data['device_type'] = self.create_or_update(
                 'device_types', 'model', type_model, {'model': type_model, 'slug': slug, 'part_number': device_data["device_type"]["part_number"] if device_data["device_type"]["part_number"] else None, 'manufacturer': manufacturer_obj.get('id')}
             ).get('id')
+            
 
         if 'platform' in device_data:
             platform_name = device_data['platform']

@@ -81,25 +81,37 @@ def main():
     # Sync switches to NetBox
     print(f'Collecting Devices from Fabric')
     switches = fabric.get_device_inventory()
+    print(f"{len(switches)} devices returned")
+    counter=0
+    interfaces=[]
     for switch in switches:
+        counter += 1
+        print(f"Processing #{counter} {switch['name']}")
         if (config.get('fabric_type').lower() != 'cisco-dnac'):
             switch['virtual_chassis']=vc_id
             vc_position=vc_position+1
             switch['vc_position']=vc_position
             switch['vc_priority']=0
             switch['site']={'name': config.get('netbox_site')}
-        netbox_manager.create_device(switch)
+            # If 'interfaces' exist, pop them off and store separately            
+            # Create the device in NetBox
         
+        netbox_manager.create_device(switch)    
+                
         # Create Virtual Device to represent Fabric Controller
         print(f'Adding/Updating {switch.get("name")} to Fabric Virtual Chassis') if DEBUG == 1 else None
             
     # Sync interfaces to NetBox
     print(f'Collecting Interfaces from Fabric')
-    switches = fabric.get_interface_inventory()
+    #Use the interfaces (if any) in a separate loop
+    if (config.get('fabric_type').lower() != 'cisco-dnac'):
+        switches = fabric.get_interface_inventory()    
+    
     if switches:
         for switch in switches:
-           for interface in switch['interfaces']:
-              netbox_manager.create_interface(interface)
+            print(f'Creating {len(switch["interfaces"])} Interfaces for {switch["name"]}')
+            for interface in switch['interfaces']:
+                netbox_manager.create_interface(interface)
 
     print(f'Setting Primary IPs on Devices') if DEBUG == 1 else None
     netbox_manager.update_device_with_primary_ips()

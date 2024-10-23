@@ -27,37 +27,122 @@ class CiscoDNAC(NetworkFabric):
         )
         print(f"Connected to Cisco DNA Center API at {self.host}")
 
+
+    def get_paginated_devices(self, client, limit=500):
+        """
+        Retrieves all devices from DNAC using pagination.
+        
+        Args:
+            client: The DNAC API client.
+            limit: The maximum number of devices to retrieve per request (default: 500).
+
+        Returns:
+            A list of all devices across all pages.
+        """
+        devices = []
+        offset = 0
+
+        while True:
+            # Fetch devices with pagination (limit and offset)
+            response = client.devices.get_device_list(offset=offset, limit=limit)
+            
+            # Append the current batch of devices to the overall list
+            devices.extend(response.response)
+            
+            # Break if the number of devices retrieved is less than the limit (no more pages)
+            if len(response.response) < limit:
+                break
+
+            # Increment the offset for the next page
+            offset += limit
+            
+            print(f'Retrieved {offset-1} devices from DNAC...')
+
+        return devices
+    
     def get_device_inventory(self):
         """Retrieve device inventory from Cisco DNA Center."""
         try:
-            devices = self.client.devices.get_device_list()
+            devices = self.get_paginated_devices(self.client)
+            print(f'Retrieved {len(devices)} total devices from DNAC...')
+
             devices_data = []
 
-            for device in devices.response:
-                model = re.sub(r'^C',r'Catalyst ',device.platformId) #deal with setting model name to Catalyst for CXXXX names
-                model = re.sub(r'^AIR\-AP',r'Aironet ',model) #deal with setting model name to aironet for CAPs
-                model = re.sub(r'^AIR\-CAP',r'Aironet ',model) #deal with setting model name to aironet for CAPs
-                model = re.sub(r'\-K9$',r'',model) #deal with models with -K9 appended
-                model = re.sub(r'^([^\,]+)\,.+',r'\1', model) #deal with stack models ( model, model, model, model )
-                role = device.family
-                name = re.sub(r'(^[^\.]+)\.clemson\.edu)',r'\1',device.hostname)
+            for device in devices:
                 
-                device_info = {
-                    'name': name,
-                    'role': {'name': role},
-                    'device_type': {'model': model, 'manufacturer': {'name': 'Cisco'}, 'part_number': device.platformId},
-                    'platform': str(device.softwareType)+" "+str(device.softwareVersion),
-                    'serial': device.serialNumber,
-                    'status': 'active' if device.reachabilityStatus == 'Reachable' else 'offline',
-                    'primary_ip4': f"{device.managementIpAddress}/32" if device.managementIpAddress else None,
-                    'site': {'name': self.default_site}
-                }
-                devices_data.append(device_info)
+                if device.hostname:
+                    # Ensure platformId, serialNumber, and hostname are strings
+                    platform_id = str(device.platformId or '')
+                    serial_number = str(device.serialNumber or '')
+                    hostname = str(device.hostname or '')
+                    serial_number = re.sub(r'^([^\,]+)\,.+', r'\1', serial_number)
+                    part_number = re.sub(r'^([^\,]+)\,.+', r'\1', platform_id)
+                    
+                    #TODO need to manage stackwise better. 
+                    #Its just creating interfaces on the main device now and not creating a stack/virtual chassis
+                    
+                    model = re.sub(r'^C', r'Catalyst ', platform_id)
+                    model = re.sub(r'^WS\-C', r'Catalyst ', model)
+                    model = re.sub(r'^IE\-', r'Catalyst IE', model)
+                    model = re.sub(r'^AIR\-AP', r'Catalyst ', model)
+                    model = re.sub(r'^AIR\-CAP', r'Catalyst ', model)
+                    model = re.sub(r'\-K9$', r'', model)
+                    model = re.sub(r'^([^\,]+)\,.+', r'\1', model)
+
+
+                    role = device.family
+                    
+                    if 'Third Party Device' in role:
+                        continue
+                    
+                    name = re.sub(r'(^[^\.]+)\.clemson\.edu', r'\1', hostname).lower() # TODO make this a variable vs clemson specific
+                    interfaces = []
+                    
+                    # Fetch interfaces for this device
+                    try:
+                        interfaces_response = self.client.devices.get_interface_info_by_id(device.id).response
+                        print(f"Fetched {len(interfaces_response)} interfaces for device {name}")
+                        
+                        # Process interfaces
+                        interfaces = [
+                            {
+                                'device': {'name': name},
+                                'name': interface.get('portName'),
+                                'mac_address': interface.get('macAddress'),
+                                'enabled': interface.get('status') == 'up',
+                                'speed_type': interface.get('speed')
+                            }
+                            for interface in interfaces_response
+                        ]
+
+                    except Exception as e:
+                        interfaces = []
+
+                    manufacturer = device.vendor or 'Cisco'
+                    manufacturer = re.sub(r' Systems Inc',r'', manufacturer)
+                    manufacturer = re.sub(r'^NA$',r'Cisco', manufacturer)
+
+                    device_info = {
+                        'name': name,
+                        'role': {'name': role},
+                        'device_type': {'model': model, 'manufacturer': {'name': manufacturer}, 'part_number': part_number},
+                        'platform': f"{device.softwareType or 'AP-IOS'} {device.softwareVersion or ''}",
+                        'serial': serial_number,
+                        'status': 'active' if device.reachabilityStatus == 'Reachable' else 'offline',
+                        'primary_ip4': f"{device.managementIpAddress}/32" if device.managementIpAddress else None,
+                        'site': {'name': self.default_site},
+                        'interfaces': interfaces  
+
+                    }
+
+                    devices_data.append(device_info)
 
             return devices_data
+
         except Exception as e:
             print(f"Error fetching device inventory: {e}")
             return []
+
 
     def get_interface_inventory(self):
         """Retrieve interface inventory from Cisco DNA Center."""
