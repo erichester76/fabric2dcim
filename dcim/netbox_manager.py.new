@@ -1,0 +1,84 @@
+import pprint
+import re
+from netboxlabs.diode.sdk import DiodeClient
+from netboxlabs.diode.sdk.ingester import Device, Interface, Entity
+
+class NetBoxManager:
+    
+    def __init__(self, config, ip_manager):
+        self.config = config
+        self.client = DiodeClient(
+            target=self.config.get('diode_url'), 
+            app_name="fabric2dcim", 
+            app_version="1.0"
+        )
+        self.ip_manager = ip_manager
+        self.default_site = self.config.get('netbox_site')
+        self.default_device_role = 'Switch/Router'
+        self.default_device_manufacturer = 'Generic'
+        self.default_device_model = 'Switch'
+        self.DEBUG = self.config.get('debug')
+
+
+
+    def interface_netbox_type(self, interface_name, speed=None, interface_type=None):
+        """
+        Convert fabric interface definition to NetBox interface type.
+        """
+        # Same logic for mapping interface names and speeds
+        cisco_interface_speeds = {
+            'Gi': '1g', 'Two': '2.5g', 'Fiv': '5g', 
+            'Te': '10g', 'Twe': '25g', 'Fo': '40g', 
+            'Hu': '100g'
+        }
+
+        for prefix, cisco_speed in cisco_interface_speeds.items():
+            if interface_name.startswith(prefix):
+                speed = cisco_speed
+                break
+
+        short_to_long_mapping = {
+            'Gi': 'GigabitEthernet', 'Two': 'TwoPointFiveGigabitEthernet', 
+            'Fi': 'FiveGigabitEthernet', 'Te': 'TenGigabitEthernet', 
+            'Twe': 'TwentyFiveGigabitEthernet', 'Fo': 'FortyGigabitEthernet', 
+            'Hu': 'HundredGigabitEthernet'
+        }
+
+        for short_name, long_name in short_to_long_mapping.items():
+            my_regex = r"(" + re.escape(short_name) + r")(\d.+$)"
+            interface_name = re.sub(my_regex, long_name + r'\2', interface_name)
+
+        connection_type = 'fiber' if not interface_type or 'fiber' in interface_type.lower() else 'copper'
+        return speed, interface_name, connection_type
+
+    def create_object(self, object_type, lookup_field, data):
+        """
+        Generic method to create or update objects in Diode (NetBox).
+
+        Args:
+            object_type (str): The type of object to create (e.g., 'site_groups', 'sites', 'locations').
+            lookup_field (str): The field to check for existence (e.g., 'name').
+            data (dict): The data to create or update the object with.
+
+        Returns:
+            The created or updated object via Diode.
+        """
+        # Convert object_type to singular camelCase form for the Diode entity
+
+        # Dynamically create the entity class
+        try:
+            entity_class = globals()[object_type]
+        except KeyError:
+            print(f"Entity type {object_type} not found.")
+            return None
+
+        # Create the object instance from the provided data
+        entity_instance = entity_class(**data)
+
+        # Ingest the entity using Diode
+        entities = [Entity(**{object_type.lower(): entity_instance})]  # Adjust for camelCase handling
+        response = self.client.ingest(entities=entities)
+
+        if response.errors:
+            print(f"Error creating/updating {object_type}: {response.errors}")
+        return response

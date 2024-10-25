@@ -80,10 +80,23 @@ def main():
 
     # Sync switches to NetBox
     print(f'Collecting Devices from Fabric')
-    switches = fabric.get_device_inventory()
+    (switches,sites) = fabric.get_device_inventory()
+    
+    for site in sites:    
+        parts = site.split('/')
+        site_group = parts[1] if len(parts) > 1 else 'N/A'  # Athletics
+        site = parts[2] if len(parts) > 2 else 'N/A'        # Reeves Football Ops
+        location = parts[3] if len(parts) > 3 else 'N/A'
+
+        print(f'Creating or Updating Site Group {site_group}')
+        netbox_manager.create_or_update('site_groups','name', site_group, {'name': site_group, 'slug': netbox_manager.generate_slug(site_group)})
+        print(f'Creating or Updating Site {site}')
+        netbox_manager.create_or_update('sites','name',site, {'name': site, 'status': 'active', 'slug': netbox_manager.generate_slug(site), 'group': site_group })
+        print(f'Creating or Updating Site Group {location}')
+        netbox_manager.create_or_update('locations','name',location,{'name': location, 'site': site, 'slug': netbox_manager.generate_slug(location), 'status': 'active'})
+
     print(f"{len(switches)} devices returned")
     counter=0
-    interfaces=[]
     for switch in switches:
         counter += 1
         print(f"Processing #{counter} {switch['name']}")
@@ -92,23 +105,20 @@ def main():
             vc_position=vc_position+1
             switch['vc_position']=vc_position
             switch['vc_priority']=0
-            switch['site']={'name': config.get('netbox_site')}
+            switch['site']={'name': site}
             # If 'interfaces' exist, pop them off and store separately            
             # Create the device in NetBox
         
         netbox_manager.create_device(switch)    
-                
-        # Create Virtual Device to represent Fabric Controller
-        print(f'Adding/Updating {switch.get("name")} to Fabric Virtual Chassis') if DEBUG == 1 else None
-            
+                            
     # Sync interfaces to NetBox
     print(f'Collecting Interfaces from Fabric')
     #Use the interfaces (if any) in a separate loop
     if (config.get('fabric_type').lower() != 'cisco-dnac'):
-        switches = fabric.get_interface_inventory()    
+        interface_sw = fabric.get_interface_inventory()    
     
-    if switches:
-        for switch in switches:
+    if interface_sw:
+        for switch in interface_sw:
             print(f'Creating {len(switch["interfaces"])} Interfaces for {switch["name"]}')
             for interface in switch['interfaces']:
                 netbox_manager.create_interface(interface)
@@ -119,13 +129,24 @@ def main():
     # Sync Network Topology to NetBox
     print(f'Collecting Network Topology from Fabric')
     (interface_groups,segments) = fabric.get_network_inventory()
-     
+    
     # Sync VLANs
     # if VNI create VTEP Loopback Interfaces, add vlans and add vni links as l2vpn
     # Create VLAN Layer3 interfaces and assign IPs if ip assigned
     # if Virtual-IP create FHRP Group
-    print(f'Creating/Updating VLANs in Netbox')
-
+    print(f'Fetching L2/L3 Information')
+    (vlans,prefixes) = fabric.get_vlan_inventory(switches,sites)
+    
+    for vlan in vlans:
+        print(f'Creating or Updating Vlan {vlan.vlan} {vlan.name}')
+        netbox_manager.create_or_update('vlans','vid',vlan)
+    
+    for prefix in prefixes:
+        print(f'Creating or Updating Prefix {prefix.prefix} {prefix.name}')
+        netbox_manager.create_or_update('prefixes','prefix',prefix)      
+        
+        pass
+    
     # Sync Prefixes
     print(f'Creating/Updating Prefixes in Netbox')
 

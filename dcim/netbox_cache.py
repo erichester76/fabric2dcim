@@ -30,6 +30,8 @@ class NetBoxCache:
             'virtual_machines': (self.netbox.virtualization.virtual_machines, 'name'),
             'virtual_interfaces': (self.netbox.virtualization.interfaces, lambda i: f"{i.virtual_machine.name}_{i.name}"),
             'virtual_clusters': (self.netbox.virtualization.clusters, 'name'),
+            'site_groups': (self.netbox.dcim.site_groups, 'name'),
+            'locations': (self.netbox.dcim.locations, 'name'),
         }
 
         self.preload_objects()

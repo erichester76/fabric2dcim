@@ -193,7 +193,6 @@ class NetBoxManager:
             # Call the API to create the object and get it imemdiately to get a complete object
             response = api_section.create(data)
             new_object = api_section.get(response.id)
-            pprint.pp(new_object)
             return new_object
         
         except Exception as e:
